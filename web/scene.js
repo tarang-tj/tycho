@@ -1,213 +1,397 @@
-// three.js renderer: terrain mesh, TYCHO rover mesh, starfield/sun, chase camera.
-// Imported only by main.js (never by the pure/tested modules).
+// three.js renderer for TYCHO. Imported only by main.js.
+//
+// API returned by createScene(canvas, terrain, { exaggeration, albedoUrl, body }):
+//   available, rendererType, camera, body
+//   updateFromVisibleState(visibleState, trueState?)  last-known telemetry (what the player sees)
+//   updateTrueState(trueState)                        feeds the debug/reveal ghost only
+//   resize(w, h), render(), dispose()
+//   setWaypoints(points)            points: [{x, y}] in meters, DEM frame (x = pixelX * metersPerPixel)
+//   setCopilotState({ mode, path, holdReason })   path: [{x, y}] meters; mode "hold" or a holdReason turns the light red
+//   flashHazard(xMeters, yMeters)
+//   setTrueRoverVisible(bool)       translucent ghost at the TRUE (present) position
+//   pulseSignal("up" | "down", durationSec)   uplink command / downlink telemetry pulse
+//   skipIntro(), setCameraView("chase" | "peak" | "closeup" | "wide")
+// The status light is green (nominal), amber while an uplink pulse is in flight
+// or mode is "waiting", red on hold or when telemetry says tipped.
 import * as THREE from "three";
+import { createSurfaceUniforms, injectSurface } from "./shading.js";
+import { createTerrainField } from "./terrain-field.js";
+import { bakeSunMask, buildDemGeometry, buildDemNormalTexture, buildRingGeometry, buildSkirtGeometry } from "./terrain-mesh.js";
+import { createNearField } from "./near-field.js";
+import { createSky, makeEnvironment } from "./sky.js";
+import { createRoverModel } from "./rover-model.js";
+import { createRoverRig } from "./rover-rig.js";
+import { createTracks, createDust } from "./ground-fx.js";
+import { createOverlays } from "./overlays.js";
+import { createCameraRig } from "./camera-rig.js";
+import { makeRegolithDetail, makeSoftSprite } from "./textures.js";
 
-const TERRAIN_SEGMENTS = 384; // mesh resolution; downsampled from the DEM grid for perf
-// Vertical clearance between the rover's rendered feet and the terrain mesh.
-// The rover's y comes from a fine bilinear elev() sample at its exact
-// position; the rendered mesh is a coarser, flat-shaded-per-quad
-// approximation of the same DEM. On real, rough terrain those two can
-// diverge by a few meters within one quad, which buries an unlit rover mesh
-// under the rendered surface. This offset keeps it visibly above ground.
-const ROVER_GROUND_CLEARANCE = 1.5;
+const LOOK = {
+  moon: {
+    ground: 0x8b8a88, rock: 0x8e8c86, track: 0x5c5b59, dust: 0xa09e9a, accent: 0x9fd8ff,
+    sunColor: 0xfffaf3, sunI: 3.6, ambient: 0.02, envI: 1, exposure: 1.0, fog: 0,
+    detail: 0.75, detailAlbedo: 0.45, hs: 0.18, spread: 0.7, curvR: 1737400,
+  },
+  mars: {
+    ground: 0xb47e58, rock: 0x7d5a45, track: 0x7a5038, dust: 0xc9a07a, accent: 0xffb27a,
+    sunColor: 0xffe9d2, sunI: 2.7, ambient: 0, envI: 1.1, exposure: 1.0, fog: 0.00006,
+    detail: 1.0, detailAlbedo: 0.5, hs: 0.25, spread: 2.4, curvR: 3389500,
+  },
+};
 
-/** Build the procedural TYCHO rover: six wheels, a boxy body, a mast with a two-lens "face", an antenna. */
-function buildRoverMesh() {
-  const group = new THREE.Group();
-  const bodyMat = new THREE.MeshStandardMaterial({ color: 0xd8d2c4, metalness: 0.3, roughness: 0.6 });
-  const wheelMat = new THREE.MeshStandardMaterial({ color: 0x24211d, metalness: 0.1, roughness: 0.9 });
-  const lensMat = new THREE.MeshStandardMaterial({ color: 0x2a6fdb, emissive: 0x0a2a5c, metalness: 0.4, roughness: 0.2 });
-
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.4, 1.4), bodyMat);
-  body.position.y = 0.45;
-  group.add(body);
-
-  // Six wheels, rocker-bogie hint via slightly uneven mount heights front/mid/rear.
-  const wheelGeo = new THREE.CylinderGeometry(0.22, 0.22, 0.18, 12);
-  const mounts = [
-    [-0.55, 0.22, 0.55], [0.55, 0.22, 0.55],
-    [-0.6, 0.2, 0], [0.6, 0.2, 0],
-    [-0.55, 0.24, -0.55], [0.55, 0.24, -0.55],
-  ];
-  for (const [x, y, z] of mounts) {
-    const wheel = new THREE.Mesh(wheelGeo, wheelMat);
-    wheel.rotation.z = Math.PI / 2;
-    wheel.position.set(x, y, z);
-    group.add(wheel);
-  }
-
-  // Mast with a two-lens "face" camera head (WALL-E/EVE nod).
-  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.6, 8), bodyMat);
-  mast.position.set(0, 0.95, 0.5);
-  group.add(mast);
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.16, 0.14), bodyMat);
-  head.position.set(0, 1.28, 0.5);
-  group.add(head);
-  for (const side of [-1, 1]) {
-    const lens = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 10), lensMat);
-    lens.position.set(side * 0.08, 1.28, 0.58);
-    group.add(lens);
-  }
-
-  // Antenna.
-  const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.5, 6), bodyMat);
-  antenna.position.set(-0.35, 0.9, -0.4);
-  antenna.rotation.z = 0.3;
-  group.add(antenna);
-
-  return group;
+function resolveBody(opts) {
+  if (opts.body === "moon" || opts.body === "mars") return opts.body;
+  if (/mars/i.test(opts.albedoUrl || "")) return "mars";
+  if (/moon/i.test(opts.albedoUrl || "")) return "moon";
+  try {
+    const key = window.TYCHO?.getLevel?.();
+    if (key === "mars" || key === "moon") return key;
+  } catch { /* no level info */ }
+  return "moon";
 }
 
-/** Build a downsampled, elevation-displaced terrain mesh from the shared terrain interface. */
-function buildTerrainMesh(terrain, exaggeration) {
-  const segs = Math.min(TERRAIN_SEGMENTS, Math.max(terrain.width, terrain.height));
-  const worldW = terrain.width * terrain.metersPerPixel;
-  const worldH = terrain.height * terrain.metersPerPixel;
-  const geometry = new THREE.PlaneGeometry(worldW, worldH, segs - 1, segs - 1);
-  geometry.rotateX(-Math.PI / 2);
-
-  const position = geometry.attributes.position;
-  for (let i = 0; i < position.count; i++) {
-    const px = position.getX(i);
-    const pz = position.getZ(i);
-    const tx = (px / worldW + 0.5) * (terrain.width - 1);
-    const ty = (pz / worldH + 0.5) * (terrain.height - 1);
-    const elevM = terrain.elev(tx, ty);
-    position.setY(i, elevM * exaggeration);
-  }
-  geometry.computeVertexNormals();
-
-  const material = new THREE.MeshStandardMaterial({
-    color: terrain.synthetic ? 0x8a8378 : 0xb0aa9e,
-    roughness: 1,
-    metalness: 0,
-    flatShading: false,
-  });
-  const mesh = new THREE.Mesh(geometry, material);
-  mesh.receiveShadow = false;
-  return mesh;
-}
-
-function buildStarfield() {
-  const count = 2000;
-  const positions = new Float32Array(count * 3);
-  for (let i = 0; i < count; i++) {
-    const r = 800 + Math.random() * 400;
-    const theta = Math.random() * Math.PI * 2;
-    const phi = Math.acos(2 * Math.random() - 1);
-    positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-    positions[i * 3 + 1] = Math.abs(r * Math.sin(phi) * Math.sin(theta));
-    positions[i * 3 + 2] = r * Math.cos(phi);
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-  const mat = new THREE.PointsMaterial({ color: 0xffffff, size: 1.5, sizeAttenuation: false });
-  return new THREE.Points(geo, mat);
-}
-
-/**
- * Create the TYCHO scene. Returns { available, renderer } plus methods to
- * update from sim state and resize/dispose. `available` is false if WebGL
- * could not be created (canvas 2D fallback is out of scope for the skeleton;
- * the caller shows the DOM fallback message).
- */
-export function createScene(canvas, terrain, { exaggeration = 1.0, albedoUrl = null } = {}) {
+export function createScene(canvas, terrain, opts = {}) {
+  const { exaggeration = 1.0, albedoUrl = null } = opts;
   let renderer;
   try {
+    // main.js recreates the scene on the same canvas per level; the reused GL
+    // context keeps the last texture upload's FLIP_Y state, which makes
+    // three's startup texImage3D calls warn. Reset it first.
+    const prevGl = canvas.__tychoGl;
+    if (prevGl) {
+      prevGl.pixelStorei(prevGl.UNPACK_FLIP_Y_WEBGL, false);
+      prevGl.pixelStorei(prevGl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+    }
     renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
+    canvas.__tychoGl = renderer.getContext();
   } catch {
     return { available: false, rendererType: "none" };
   }
   if (!renderer) return { available: false, rendererType: "none" };
 
-  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  const body = resolveBody(opts);
+  const look = LOOK[body];
+  const maxPr = Math.min(1.25, window.devicePixelRatio || 1); // ~1080p worth of pixels on a Retina Air
+  let pr = maxPr;
+  renderer.setPixelRatio(pr);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = look.exposure;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x000000);
-  scene.add(buildStarfield());
+  const sky = createSky(body);
+  scene.add(sky.group);
+  if (sky.fogColor) {
+    scene.fog = new THREE.FogExp2(sky.fogColor, look.fog);
+    scene.background = sky.fogColor.clone();
+  }
+  const env = makeEnvironment(renderer, body, sky.sunDir);
+  scene.environment = env.texture;
+  scene.environmentIntensity = look.envI;
 
-  const sun = new THREE.DirectionalLight(0xffffff, 1.8);
-  sun.position.set(-300, 120, 200); // low-angle sun for surface relief
-  scene.add(sun);
-  // Real DEM crater terrain can put the spawn point on a slope facing away
-  // from the sun; a modest ambient floor keeps the scene legible instead of
-  // rendering a near-black frame on an unlucky spawn orientation.
-  scene.add(new THREE.AmbientLight(0x606a75, 1.0));
+  // --- Terrain ---
+  const field = createTerrainField(terrain, body, exaggeration);
+  const U = createSurfaceUniforms();
+  U.uDemOrigin.value.set(field.x0 - field.cell / 2, field.z0 - field.cell / 2);
+  U.uDemSize.value.set(field.W * field.cell, field.H * field.cell);
+  const detailA = makeRegolithDetail({ body, scale: "fine" });
+  const detailB = makeRegolithDetail({ body, scale: "coarse" });
+  const detailC = makeRegolithDetail({ body, scale: "mid" });
+  U.uDetailC.value = detailC;
+  U.uTileC.value = detailC.userData.tileMeters;
+  U.uDetailA.value = detailA;
+  U.uDetailB.value = detailB;
+  U.uTileA.value = detailA.userData.tileMeters;
+  U.uTileB.value = detailB.userData.tileMeters;
+  U.uDetailStrength.value = look.detail;
+  U.uDetailAlbedo.value = look.detailAlbedo;
+  U.uHsStrength.value = look.hs;
+  U.uCurvR.value = look.curvR;
+  const fillData = new Uint8Array(field.fill.length);
+  for (let i = 0; i < fillData.length; i++) fillData[i] = field.fill[i] ? 255 : 0;
+  const fillTex = new THREE.DataTexture(fillData, field.W, field.H, THREE.RedFormat, THREE.UnsignedByteType);
+  fillTex.magFilter = fillTex.minFilter = THREE.LinearFilter;
+  fillTex.needsUpdate = true;
+  U.uFillMask.value = fillTex;
+  // The data lane ships an exact no-data mask; fold it into the hillshade
+  // suppression (the albedo hatches those cells) when it is available.
+  if (albedoUrl && terrain.meta?.maskFile) {
+    fetch(albedoUrl.replace(/[^/]+$/, terrain.meta.maskFile)).then((r) => (r.ok ? r.arrayBuffer() : null)).then((buf) => {
+      if (!buf || buf.byteLength < fillData.length) return;
+      const m = new Uint8Array(buf);
+      for (let i = 0; i < fillData.length; i++) if (m[i]) fillData[i] = 255;
+      fillTex.needsUpdate = true;
+    }).catch(() => { /* optional asset */ });
+  }
+  const sunMask = bakeSunMask(renderer, field, sky.sunDir, look.spread);
+  U.uSunMask.value = sunMask.texture;
+  U.uHasSunMask.value = 1;
+  const demNormalTex = buildDemNormalTexture(field);
+  U.uDemNormal.value = demNormalTex;
 
-  const terrainMesh = buildTerrainMesh(terrain, exaggeration);
-  scene.add(terrainMesh);
+  const farMat = injectSurface(new THREE.MeshStandardMaterial({ color: look.ground, roughness: 0.97, metalness: 0 }), U, { terrain: true, curve: true, hole: true, demNormal: true });
+  const skirtMat = injectSurface(new THREE.MeshStandardMaterial({ color: look.ground, roughness: 1, side: THREE.DoubleSide }), U, { terrain: true, curve: true });
+  const far = new THREE.Group();
+  const demStep = field.W > 600 ? 2 : 1;
+  far.add(new THREE.Mesh(buildDemGeometry(field, demStep), farMat), new THREE.Mesh(buildSkirtGeometry(field, 40, demStep), skirtMat));
+  const s1 = Math.max(demStep * 2, Math.round(40 / field.cell));
+  const k1 = Math.ceil(6000 / (s1 * field.cell));
+  far.add(new THREE.Mesh(buildRingGeometry(field, {
+    spacingPx: s1, extentPx: s1 * k1, holeMinX: 0, holeMaxX: field.W - 1, holeMinY: 0, holeMaxY: field.H - 1, innerStepPx: demStep,
+  }), farMat));
+  const s2 = Math.max(s1 * 4, Math.round(420 / field.cell / s1) * s1);
+  far.add(new THREE.Mesh(buildRingGeometry(field, {
+    spacingPx: s2, extentPx: Math.ceil(70000 / (s2 * field.cell)) * s2,
+    holeMinX: -s1 * k1, holeMaxX: field.W - 1 + s1 * k1, holeMinY: -s1 * k1, holeMaxY: field.H - 1 + s1 * k1, innerStepPx: s1,
+  }), farMat));
+  for (const m of far.children) m.frustumCulled = false;
+  scene.add(far);
   if (albedoUrl) {
-    new THREE.TextureLoader().load(
-      albedoUrl,
-      (tex) => { terrainMesh.material.map = tex; terrainMesh.material.color.set(0xffffff); terrainMesh.material.needsUpdate = true; },
-      undefined,
-      () => { /* no albedo asset yet; the flat-shaded material stands in */ },
-    );
+    new THREE.TextureLoader().load(albedoUrl, (tex) => {
+      tex.colorSpace = THREE.NoColorSpace;
+      tex.anisotropy = 8;
+      try {
+        const c = document.createElement("canvas");
+        c.width = c.height = 64;
+        const g = c.getContext("2d");
+        g.drawImage(tex.image, 0, 0, 64, 64);
+        const px = g.getImageData(0, 0, 64, 64).data;
+        let sum = 0;
+        for (let i = 0; i < px.length; i += 4) sum += px[i + 1];
+        U.uHsMean.value = Math.max(0.05, sum / (px.length / 4) / 255);
+      } catch { /* keep default mean */ }
+      U.uDemAlbedo.value = tex;
+      U.uHasDemAlbedo.value = 1;
+    }, undefined, () => { /* no albedo asset: detail + lighting carry the look */ });
   }
 
-  const lastKnownRover = buildRoverMesh();
-  scene.add(lastKnownRover);
+  const near = createNearField({ field, body, uniforms: U, groundColor: look.ground, rockColor: look.rock });
+  const spawnPx = terrain.meta?.spawn ?? { x: terrain.width / 2, y: terrain.height / 2 };
+  const spawnW = field.pxToWorld(spawnPx.x, spawnPx.y);
+  near.addExclusion(spawnW.x, spawnW.z, 10);
+  near.follow(spawnW.x, spawnW.z, true);
+  scene.add(near.group);
 
-  // Faint ghost/prediction line trailing from the last-known position.
-  const ghostGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
-  const ghostMat = new THREE.LineDashedMaterial({ color: 0x4fa8ff, dashSize: 0.3, gapSize: 0.2, transparent: true, opacity: 0.5 });
-  const ghostLine = new THREE.Line(ghostGeo, ghostMat);
-  ghostLine.computeLineDistances();
-  scene.add(ghostLine);
+  // --- Light ---
+  const sun = new THREE.DirectionalLight(look.sunColor, look.sunI);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(4096, 4096);
+  Object.assign(sun.shadow.camera, { left: -108, right: 108, top: 108, bottom: -108, near: 1, far: 1400 });
+  sun.shadow.bias = -0.0002;
+  sun.shadow.normalBias = 0.07;
+  scene.add(sun, sun.target, new THREE.AmbientLight(0xffffff, look.ambient));
 
-  const camera = new THREE.PerspectiveCamera(60, canvas.clientWidth / Math.max(1, canvas.clientHeight), 0.1, 3000);
+  // --- Rover, ghost, ground effects, overlays ---
+  const model = createRoverModel({ uniforms: U });
+  const rig = createRoverRig(model);
+  const ghost = createRoverModel({ ghost: true });
+  const ghostRig = createRoverRig(ghost);
+  ghost.root.visible = false;
+  scene.add(model.root, ghost.root);
+  const sprite = makeSoftSprite();
+  const tracks = createTracks({ uniforms: U, color: look.track });
+  const dust = createDust({ body, sprite, color: look.dust });
+  const mpp = terrain.metersPerPixel;
+  const overlays = createOverlays({
+    groundAt: near.groundAt, accent: look.accent, sprite,
+    toWorld: (xm, ym) => field.pxToWorld(xm / mpp, ym / mpp),
+  });
+  scene.add(tracks.group, dust.points, overlays.group);
+  const goalPx = terrain.meta?.goal;
+  if (goalPx) overlays.setGoal(goalPx.x * mpp, goalPx.y * mpp);
 
-  function worldPos(pixelX, pixelY) {
-    const worldW = terrain.width * terrain.metersPerPixel;
-    const worldH = terrain.height * terrain.metersPerPixel;
-    const x = (pixelX / (terrain.width - 1) - 0.5) * worldW;
-    const z = (pixelY / (terrain.height - 1) - 0.5) * worldH;
-    const y = terrain.elev(pixelX, pixelY) * exaggeration;
-    return new THREE.Vector3(x, y, z);
+  const camera = new THREE.PerspectiveCamera(50, canvas.clientWidth / Math.max(1, canvas.clientHeight), 0.08, 160000);
+  const camRig = createCameraRig(camera, canvas, { groundAt: near.groundAt, openingDir: body === "moon" ? sky.earthDir : sky.sunDir });
+
+  let visible = null;
+  let trueState = null;
+  let showTrue = false;
+  let copilot = { mode: "", path: [], holdReason: "" };
+  let lastTime = null;
+  let introPending = true;
+  let cssW = canvas.clientWidth || 1, cssH = canvas.clientHeight || 1;
+  const perf = { frames: 0, sum: 0, lastChange: 0 };
+  const v = new THREE.Vector3();
+  const roverTarget = new THREE.Vector3();
+  const titleOpen = () => document.body.classList.contains("title-open");
+  let waypointKey = "";
+  let pathKey = "";
+  // Points arrive in meters (DEM frame) by contract; { units: "px" } accepts terrain pixels.
+  const toMeters = (points, units) => (units === "px" ? points.map((p) => ({ x: p.x * mpp, y: p.y * mpp })) : points);
+  function signature(points, units) {
+    let sum = 0;
+    for (let i = 0; i < points.length; i++) sum += points[i].x * (i + 1) + points[i].y * (i + 7);
+    return `${units || "m"}:${points.length}:${sum.toFixed(3)}`;
+  }
+  const deg = (d) => (d * Math.PI) / 180;
+
+  function status() {
+    if (copilot.holdReason || copilot.mode === "hold" || visible?.tipped) return "hold";
+    if (overlays.uplinkInFlight() || copilot.mode === "waiting") return "waiting";
+    return "nominal";
   }
 
-  /** Update the last-known rover and chase camera from a visible (delayed) telemetry state. */
-  function updateFromVisibleState(visibleState) {
-    if (!visibleState) return;
-    const pos = worldPos(visibleState.x, visibleState.y);
-    lastKnownRover.position.set(pos.x, pos.y + ROVER_GROUND_CLEARANCE, pos.z);
-    lastKnownRover.rotation.y = (visibleState.heading * Math.PI) / 180;
-
-    const headingRad = (visibleState.heading * Math.PI) / 180;
-    const behind = new THREE.Vector3(-Math.sin(headingRad), 0, -Math.cos(headingRad)).multiplyScalar(6);
-    const camPos = pos.clone().add(behind).add(new THREE.Vector3(0, 3.2, 0));
-    camera.position.lerp(camPos, 0.08);
-    camera.lookAt(pos.x, pos.y + 0.6, pos.z);
-
-    const ghostEnd = pos.clone();
-    ghostEnd.x += Math.sin(headingRad) * visibleState.speed * 1.5;
-    ghostEnd.z += Math.cos(headingRad) * visibleState.speed * 1.5;
-    ghostGeo.setFromPoints([pos.clone().setY(pos.y + ROVER_GROUND_CLEARANCE), ghostEnd.setY(pos.y + ROVER_GROUND_CLEARANCE)]);
-    ghostGeo.attributes.position.needsUpdate = true;
-    ghostLine.computeLineDistances();
-  }
-
-  function resize(width, height) {
-    renderer.setSize(width, height, false);
-    camera.aspect = width / Math.max(1, height);
-    camera.updateProjectionMatrix();
+  const bornAt = performance.now();
+  function adaptResolution(dt) {
+    if (performance.now() - bornAt < 6000 || titleOpen()) return; // skip shader-compile and terrain-build hitches
+    perf.frames += 1;
+    perf.sum += dt;
+    if (perf.frames < 120) return;
+    const avg = perf.sum / perf.frames;
+    perf.frames = 0;
+    perf.sum = 0;
+    perf.slow = avg > 0.021 ? (perf.slow || 0) + 1 : 0;
+    if (perf.slow >= 2 && pr > 0.75) {
+      perf.slow = 0;
+      pr = Math.max(0.75, pr - 0.25);
+      renderer.setPixelRatio(pr);
+      resize(cssW, cssH);
+    }
   }
 
   function render() {
+    if (document.hidden) { lastTime = null; return; }
+    const now = performance.now();
+    const dt = lastTime == null ? 1 / 60 : Math.min(0.1, (now - lastTime) / 1000);
+    lastTime = now;
+    adaptResolution(dt);
+
+    const s = visible ?? { x: spawnPx.x, y: spawnPx.y, heading: 0, speed: 0 };
+    const w = field.pxToWorld(s.x, s.y);
+    if (near.follow(w.x, w.z)) tracks.redrape(near.groundAt);
+    const heading = deg(s.heading || 0);
+    const speed = s.speed || 0;
+    rig.update(dt, { x: w.x, z: w.z, heading, speed, groundAt: near.groundAt, earthDir: sky.earthDir, status: status() });
+    roverTarget.set(w.x, model.root.position.y, w.z);
+
+    ghost.root.visible = showTrue && !!trueState;
+    if (ghost.root.visible) {
+      const tw = field.pxToWorld(trueState.x, trueState.y);
+      ghostRig.update(dt, { x: tw.x, z: tw.z, heading: deg(trueState.heading || 0), speed: trueState.speed || 0, groundAt: near.groundAt, earthDir: sky.earthDir });
+    }
+
+    if (Math.abs(speed) > 0.01) {
+      model.root.updateMatrixWorld();
+      const contacts = model.sides.map((side) => { side.wheels[0].wheel.getWorldPosition(v); return { x: v.x, z: v.z }; });
+      tracks.add(contacts, near.groundAt);
+      for (const side of model.sides) {
+        side.wheels[2].wheel.getWorldPosition(v);
+        dust.emit(v.x, near.groundAt(v.x, v.z), v.z, heading, speed, dt);
+      }
+    }
+    dust.update(dt, near.groundAt);
+
+    // The shadow box tracks the near-field patch (not the rover) so its edge
+    // always lies outside the micro-relief region and never shows as a line.
+    const pc = near.center();
+    sun.target.position.set(pc.x, roverTarget.y, pc.z);
+    sun.position.copy(sun.target.position).addScaledVector(sky.sunDir, 650);
+
+    if (introPending && !titleOpen()) { camRig.snapTo(roverTarget, heading); camRig.startIntro(roverTarget, heading); }
+    introPending = false;
+    camRig.update(dt, { target: roverTarget, heading, speed, attract: titleOpen() });
+    sky.update(camera);
+    model.hgaEl.getWorldPosition(v);
+    overlays.update(dt, { dishPos: v, skyDir: sky.earthDir });
     renderer.render(scene, camera);
   }
 
-  function dispose() {
-    renderer.dispose();
+  function resize(width, height) {
+    cssW = width; cssH = height;
+    renderer.setSize(width, height, false);
+    camera.aspect = width / Math.max(1, height);
+    camera.updateProjectionMatrix();
+    dust.setViewportHeight(height * pr);
+    sky.setPixelRatio(pr);
   }
 
-  return {
+  function setCameraView(name) {
+    const views = {
+      chase: { yawOff: 0, pitch: 0.13, dist: 5.8 },
+      closeup: { yawOff: 2.4, pitch: 0.12, dist: 2.9 },
+      wide: { yawOff: 0.6, pitch: 0.42, dist: 38 },
+      peak: { yawOff: 0, pitch: 0.06, dist: 6.5 },
+    };
+    if (name === "earth") {
+      // Low behind the rover, looking up past its dish at the Earth.
+      const e = sky.earthDir;
+      const hz = new THREE.Vector3(e.x, 0, e.z).normalize();
+      const side = new THREE.Vector3(-hz.z, 0, hz.x);
+      camRig.setPose((t) => {
+        const px = t.x - hz.x * 6.5 + side.x * 1.6, pz = t.z - hz.z * 6.5 + side.z * 1.6;
+        const position = new THREE.Vector3(px, Math.max(t.y + 0.5, near.groundAt(px, pz) + 0.45), pz);
+        // Frame from the geometry: the rover near the bottom edge, the Earth
+        // (elevation from earthDir) near the top, whatever the local slope.
+        const dist = Math.hypot(t.x - px, t.z - pz);
+        const roverEl = Math.atan2(t.y + 0.5 - position.y, dist);
+        const earthEl = Math.asin(e.y);
+        const pad = THREE.MathUtils.degToRad(5);
+        const pitch = (roverEl + earthEl) / 2;
+        const fov = THREE.MathUtils.clamp(THREE.MathUtils.radToDeg(earthEl - roverEl + 2 * pad), 50, 95);
+        const look = position.clone().addScaledVector(hz, 10 * Math.cos(pitch)).add(new THREE.Vector3(0, 10 * Math.sin(pitch), 0));
+        return { position, look, fov };
+      });
+      return;
+    }
+    const view = views[name] ?? views.chase;
+    if (name === "peak") {
+      const hd = deg(visible?.heading || 0);
+      const aimAt = goalPx ? field.pxToWorld(goalPx.x, goalPx.y) : field.peak;
+      const toPeak = Math.atan2(aimAt.x - roverTarget.x, aimAt.z - roverTarget.z);
+      view.yawOff = toPeak - hd;
+    }
+    camRig.setView(view);
+  }
+
+  function dispose() {
+    camRig.dispose();
+    scene.traverse((o) => {
+      o.geometry?.dispose?.();
+      const list = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+      for (const m of list) { m.map?.dispose?.(); m.normalMap?.dispose?.(); m.dispose(); }
+    });
+    for (const t of [detailA, detailB, detailC, fillTex, demNormalTex, sprite, U.uDemAlbedo.value]) t?.dispose?.();
+    sunMask.dispose();
+    env.dispose();
+    sky.dispose();
+    renderer.dispose();
+    if (window.TYCHO_SCENE === api) window.TYCHO_SCENE = null;
+  }
+
+  const api = {
     available: true,
     rendererType: "webgl",
-    updateFromVisibleState,
+    body,
+    camera,
+    updateFromVisibleState(state, truth) { if (state) visible = state; if (truth) trueState = truth; },
+    updateTrueState(state) { trueState = state; },
     resize,
     render,
     dispose,
-    camera,
+    setWaypoints(points = [], options = {}) {
+      const key = signature(points, options.units);
+      if (key === waypointKey) return; // main.js may call this every frame
+      waypointKey = key;
+      overlays.setWaypoints(toMeters(points, options.units));
+    },
+    setCopilotState(next = {}, options = {}) {
+      const mode = next.holdReason ? "hold" : next.mode || "";
+      copilot = { mode: next.mode || "", path: next.path || [], holdReason: next.holdReason || "" };
+      const key = signature(copilot.path, options.units) + mode;
+      if (key === pathKey) return;
+      pathKey = key;
+      overlays.setPath(toMeters(copilot.path, options.units), mode);
+    },
+    flashHazard: (xm, ym) => overlays.flashHazard(xm, ym),
+    setTrueRoverVisible(on) { showTrue = !!on; },
+    pulseSignal: (dir, durationSec) => overlays.pulse(dir, durationSec),
+    skipIntro: () => camRig.skipIntro(),
+    setCameraView,
+    debugInternals: () => ({ scene, far, near, model, sun, renderer, tracks, dust, overlays, sky, uniforms: U, camRig, field }),
+    getStats: () => ({ pixelRatio: pr, body, filledFraction: field.filledFraction, triangles: renderer.info.render.triangles, calls: renderer.info.render.calls }),
   };
+  window.TYCHO_SCENE = api;
+  return api;
 }

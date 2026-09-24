@@ -1,11 +1,14 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-body="moon">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="description" content="TYCHO: drive a rover over real Moon and Mars terrain with the real signal delay. Independent portfolio project.">
-  <meta name="theme-color" content="#06070a">
-  <title>TYCHO — drive the delay</title>
+  <meta name="theme-color" content="#05060a">
+  <title>TYCHO: drive the delay</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500&display=swap">
   <link rel="stylesheet" href="styles.css">
   <script type="importmap">
   {
@@ -16,48 +19,74 @@
   }
   </script>
 </head>
-<body>
+<body class="title-open">
+  <div class="scene-shell">
+    <canvas id="sceneCanvas" tabindex="0" aria-label="TYCHO 3D scene. Drag to look around, scroll or pinch to zoom."></canvas>
+    <div class="scene-vignette" aria-hidden="true"></div>
+    <p id="sceneFallback" class="scene-fallback" hidden>WebGL is unavailable in this browser. TYCHO needs a WebGL-capable browser to run.</p>
+    <p id="terrainBanner" class="terrain-banner" hidden>Synthetic test terrain: real DEM assets not loaded</p>
+    <p id="marsDelayNote" class="mars-delay-note" hidden>Mars delay compressed for play; real one-way delay: 3 to 22 minutes.</p>
+  </div>
+
   <header class="topbar">
     <div class="identity">
       <strong>TYCHO</strong>
       <small>Drive the delay</small>
     </div>
     <div class="level-select" role="group" aria-label="Level select">
-      <button type="button" data-level="moon" class="level-btn" aria-pressed="true">Moon — Lunokhod</button>
-      <button type="button" data-level="mars" class="level-btn" aria-pressed="false">Mars — Jezero</button>
+      <button type="button" data-level="moon" class="level-btn" aria-pressed="true">Lunokhod <span>Moon</span></button>
+      <button type="button" data-level="mars" class="level-btn" aria-pressed="false">Jezero <span>Mars</span></button>
     </div>
   </header>
 
-  <main>
-    <div class="scene-shell">
-      <canvas id="sceneCanvas" tabindex="0" aria-label="TYCHO 3D scene"></canvas>
-      <p id="sceneFallback" class="scene-fallback" hidden>WebGL is unavailable in this browser. TYCHO needs a WebGL-capable browser to run.</p>
-      <p id="terrainBanner" class="terrain-banner" hidden>SYNTHETIC TEST TERRAIN — real DEM assets not loaded</p>
-      <p id="marsDelayNote" class="mars-delay-note" hidden>Mars delay compressed for play; real one-way delay: 3 to 22 minutes.</p>
-    </div>
-
-    <div class="hud" aria-label="Telemetry and controls">
-      <dl class="hud-row">
-        <dt>Body</dt><dd id="hudBody">—</dd>
-        <dt>One-way delay</dt><dd id="hudDelay">—</dd>
-        <dt>Signal in flight</dt><dd id="hudInFlight">—</dd>
-        <dt>Seeing telemetry from</dt><dd id="hudTelemetryAge">—</dd>
-        <dt>Speed</dt><dd id="hudSpeed">—</dd>
-        <dt>Slope under rover</dt><dd id="hudSlope">—</dd>
-        <dt>Distance to goal</dt><dd id="hudGoalDist">—</dd>
-      </dl>
-      <div class="touchpad" aria-label="Touch drive controls">
-        <button type="button" data-control="forward" class="pad-btn pad-up">▲</button>
-        <div class="pad-mid">
-          <button type="button" data-control="left" class="pad-btn">◀</button>
-          <button type="button" data-control="right" class="pad-btn">▶</button>
-        </div>
-        <button type="button" data-control="back" class="pad-btn pad-down">▼</button>
+  <aside class="hud" aria-label="Telemetry and controls">
+    <p class="hud-eyebrow"><span class="link-dot" aria-hidden="true"></span>Telemetry <em>last known</em></p>
+    <dl class="hud-row">
+      <div><dt>Body</dt><dd id="hudBody">--</dd></div>
+      <div><dt>One-way delay</dt><dd id="hudDelay">--</dd></div>
+      <div><dt>Signal in flight</dt><dd id="hudInFlight">--</dd></div>
+      <div><dt>Telemetry from</dt><dd id="hudTelemetryAge">--</dd></div>
+      <div><dt>Speed</dt><dd id="hudSpeed">--</dd></div>
+      <div><dt>Slope</dt><dd id="hudSlope">--</dd></div>
+      <div class="wide"><dt>Distance to goal</dt><dd id="hudGoalDist">--</dd></div>
+    </dl>
+    <div class="touchpad" aria-label="Touch drive controls">
+      <button type="button" data-control="forward" class="pad-btn pad-up" aria-label="Forward">&#9650;</button>
+      <div class="pad-mid">
+        <button type="button" data-control="left" class="pad-btn" aria-label="Left">&#9664;</button>
+        <button type="button" data-control="right" class="pad-btn" aria-label="Right">&#9654;</button>
       </div>
-      <p class="controls-help">Keyboard: WASD or arrow keys. Everything you see is delayed telemetry from the past.</p>
+      <button type="button" data-control="back" class="pad-btn pad-down" aria-label="Back">&#9660;</button>
     </div>
-  </main>
+    <p class="controls-help">WASD or arrow keys to drive. Drag to look around. Everything you see is telemetry from the past.</p>
+  </aside>
 
+  <section id="title-screen" class="title-screen" aria-labelledby="title-wordmark">
+    <div class="title-inner">
+      <p class="title-eyebrow">A rover on real terrain, at the speed of light</p>
+      <h1 id="title-wordmark" class="wordmark">TYCHO</h1>
+      <p class="title-sub">Drive the delay.</p>
+      <p class="title-story">TYCHO is a small rover on the real Moon and Mars. Every command you send crosses space at the speed of light, and everything you see has already happened.</p>
+      <div class="level-cards" role="radiogroup" aria-label="Choose a level">
+        <button type="button" class="level-card" role="radio" aria-checked="true" data-level="moon">
+          <span class="card-name">Lunokhod</span>
+          <span class="card-meta">Moon · Tycho central peak</span>
+          <span class="card-delay">1.28 s</span>
+          <span class="card-note">Steer live, like the 1970s crews did</span>
+        </button>
+        <button type="button" class="level-card" role="radio" aria-checked="false" data-level="mars">
+          <span class="card-name">Jezero</span>
+          <span class="card-meta">Mars · Jezero crater</span>
+          <span class="card-delay">3 to 22 min</span>
+          <span class="card-note">Plan the sol, trust the co-pilot</span>
+        </button>
+      </div>
+      <button type="button" class="title-start" id="titleStart">Start</button>
+      <p class="title-credits">Terrain: NASA/GSFC/Arizona State University (LROC) and USGS/NASA/JPL (CTX DEM). Surroundings beyond the DEM tile are procedural.</p>
+    </div>
+  </section>
+
+  <script type="module" src="title.js"></script>
   <script type="module" src="main.js"></script>
 </body>
 </html>
