@@ -78,7 +78,7 @@ function buildTerrain({ width, height, metersPerPixel, elevations, synthetic, me
 /**
  * Synthetic development/test terrain: a cone peak plus low-amplitude
  * deterministic noise. Used whenever real DEM assets are missing so the
- * engine, tests, and UI never special-case "no data yet" — and so real
+ * engine, tests, and UI never special-case "no data yet" - and so real
  * data from the parallel data-pipeline lane drops in with zero code changes.
  */
 export function createSyntheticTerrain({ width = 256, height = 256, metersPerPixel = 4, peakHeight = 140, seed = 1 } = {}) {

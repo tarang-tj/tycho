@@ -2,7 +2,7 @@
 // Earth (the player) and the rover.
 //
 // The simulation runs in "true present" time (tNow, seconds, injected by the
-// caller — never Date.now() inside this module, so it is deterministic and
+// caller - never Date.now() inside this module, so it is deterministic and
 // testable). Two one-way legs exist:
 //   uplink:    a command sent at tNow arrives at the rover at tNow + delay
 //   telemetry: a state sent at tNow is visible to the player at tNow + delay
@@ -57,7 +57,7 @@ export function createSignalLink(oneWayDelaySec) {
     return lastVisibleTelemetry ? { ...lastVisibleTelemetry } : null;
   }
 
-  /** Count of commands sent but not yet delivered — drives the "signal in flight" HUD. */
+  /** Count of commands sent but not yet delivered - drives the "signal in flight" HUD. */
   function commandsInFlight(tNow) {
     return uplinkQueue.filter((entry) => entry.arriveAt > tNow).length;
   }

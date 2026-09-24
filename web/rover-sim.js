@@ -1,5 +1,5 @@
 // Pure rover physics. Fixed-dt step, no DOM/three.js dependency, no
-// wall-clock reads — every input is a parameter, so it is deterministic
+// wall-clock reads - every input is a parameter, so it is deterministic
 // and unit-testable in node.
 
 const DEFAULT_OPTS = {
@@ -67,4 +67,25 @@ export function stepRover(state, control, terrain, dt, opts = {}) {
     slopeDeg: slope,
     elevM: terrain.elev(x, y),
   };
+}
+
+/**
+ * Derive a control input that steers a rover toward a target point (pixel
+ * coordinates), for autonomous sol-plan driving. Pure: no terrain lookups,
+ * just heading math consistent with stepRover's convention (heading 0 = +y,
+ * heading 90 = +x). Slows down for sharp turns instead of driving through them.
+ */
+export function steerTowardPoint(state, target) {
+  const dx = target.x - state.x;
+  const dy = target.y - state.y;
+  const distPx = Math.hypot(dx, dy);
+  if (distPx < 1e-6) return { throttle: 0, steer: 0 };
+
+  const desiredHeadingDeg = ((Math.atan2(dx, dy) * 180) / Math.PI + 360) % 360;
+  let diff = desiredHeadingDeg - state.heading;
+  diff = ((diff + 540) % 360) - 180; // normalize to (-180, 180]
+
+  const steer = Math.max(-1, Math.min(1, diff / 45));
+  const throttle = Math.abs(diff) > 90 ? 0.3 : 1;
+  return { throttle, steer };
 }
