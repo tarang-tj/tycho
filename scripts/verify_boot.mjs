@@ -9,11 +9,14 @@
 //     guardrail limit, and that HOLD reaches the player as a "held" mission
 //     status after the telemetry delay
 //
-// Playwright is not installed in this repo (a zero-build repo keeps no
-// node_modules of its own). It is loaded from a sibling repo that already
-// has it, via createRequire - set TYCHO_PLAYWRIGHT_FROM to override the
-// base package.json if that sibling repo moves or this runs on another
-// machine.
+// Playwright resolution (no personal paths committed - see L1 in the
+// pre-publish review): this is a zero-build repo that doesn't keep its own
+// node_modules, so playwright is resolved in order:
+//   1. TYCHO_PLAYWRIGHT_FROM env var: path to a package.json (in this repo
+//      or a sibling one) whose node_modules has playwright installed.
+//   2. createRequire(import.meta.url)('playwright'): works if playwright is
+//      installed as this repo's own devDependency (see package.json).
+//   3. A clear, actionable error otherwise.
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { readFile } from "node:fs/promises";
@@ -22,10 +25,23 @@ import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 
+function resolvePlaywright() {
+  if (process.env.TYCHO_PLAYWRIGHT_FROM) {
+    return createRequire(process.env.TYCHO_PLAYWRIGHT_FROM)("playwright");
+  }
+  try {
+    return createRequire(import.meta.url)("playwright");
+  } catch {
+    throw new Error(
+      "playwright is not installed. Either add it as a devDependency and install it " +
+      "(npm install -D playwright), or point TYCHO_PLAYWRIGHT_FROM at the package.json " +
+      "of another local repo that already has it installed, e.g.:\n" +
+      "  TYCHO_PLAYWRIGHT_FROM=/path/to/other-repo/package.json npm run verify:boot",
+    );
+  }
+}
+const { chromium } = resolvePlaywright();
 const root = fileURLToPath(new URL("../", import.meta.url));
-const playwrightBase = process.env.TYCHO_PLAYWRIGHT_FROM;
-const require = createRequire(playwrightBase);
-const { chromium } = require("playwright");
 
 const mime = { ".html": "text/html", ".css": "text/css", ".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json" };
 const server = createServer(async (request, response) => {

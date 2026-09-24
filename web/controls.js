@@ -1,19 +1,19 @@
 // DOM input wiring: keyboard, touch pad, level-select buttons, and the
 // render-loop lifecycle (resize, pause on tab-hide). Pure glue - all game
 // logic (what a command DOES) lives in main.js/rover-sim.js; this module
-// only turns DOM events into `sendCommand()` calls and drives the
-// requestAnimationFrame loop's start/stop.
+// only turns DOM events into `sendCommand()` calls and starts/stops the
+// single render loop main.js owns (see web/async-guards.js).
 const KEY_MAP = { w: "forward", arrowup: "forward", s: "back", arrowdown: "back", a: "left", arrowleft: "left", d: "right", arrowright: "right" };
 
 /**
  * Wire keyboard/touch/level-select/lifecycle listeners.
  * `runtime` bundles the small pieces of main.js's mutable render-loop state
  * this module needs to touch, since main.js owns that state (not a global):
- *   sendCommand(cmd), loadLevel(key), resizeCanvas(), frame(nowMs),
- *   isReady(), getRafId(), setRafId(id), resetFrameClock()
+ *   sendCommand(cmd), loadLevel(key), resizeCanvas(), isReady(),
+ *   startLoop(), stopLoop()
  */
 export function wireControls(runtime) {
-  const { sendCommand, loadLevel, resizeCanvas, frame, isReady, getRafId, setRafId, resetFrameClock } = runtime;
+  const { sendCommand, loadLevel, resizeCanvas, isReady, startLoop, stopLoop } = runtime;
   const held = new Set();
   let lastSentControl = { throttle: 0, steer: 0 };
 
@@ -36,6 +36,14 @@ export function wireControls(runtime) {
     }
   }
 
+  /** Forget every held key without sending a final "stop" (the run may already
+   * be gone/reset) - just clears local intent state (M7). */
+  function releaseAllHeld() {
+    if (!held.size) return;
+    held.clear();
+    applyIntentChange();
+  }
+
   // --- Keyboard controls (edge-triggered: a command is sent only when intent changes) ---
   window.addEventListener("keydown", (event) => {
     const control = KEY_MAP[event.key.toLowerCase()];
@@ -49,6 +57,9 @@ export function wireControls(runtime) {
     held.delete(control);
     applyIntentChange();
   });
+  // M7: a lost focus/tab switch can drop the matching keyup (e.g. alt-tab
+  // while holding W), leaving the rover driving forever on return.
+  window.addEventListener("blur", releaseAllHeld);
 
   // --- Touch pad ---
   for (const btn of document.querySelectorAll(".pad-btn")) {
@@ -57,6 +68,7 @@ export function wireControls(runtime) {
     const release = () => { held.delete(control); applyIntentChange(); };
     btn.addEventListener("pointerup", release);
     btn.addEventListener("pointerleave", release);
+    btn.addEventListener("pointercancel", release);
   }
 
   // --- Level select ---
@@ -64,15 +76,14 @@ export function wireControls(runtime) {
     btn.addEventListener("click", () => loadLevel(btn.dataset.level));
   }
 
-  // --- Lifecycle: pause the loop when the tab is hidden ---
+  // --- Lifecycle: pause the loop when the tab is hidden, clear stuck keys (M7) ---
   window.addEventListener("resize", resizeCanvas);
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
-      cancelAnimationFrame(getRafId());
-      setRafId(null);
-    } else if (isReady() && getRafId() == null) {
-      resetFrameClock();
-      setRafId(requestAnimationFrame(frame));
+      releaseAllHeld();
+      stopLoop();
+    } else if (isReady()) {
+      startLoop();
     }
   });
 

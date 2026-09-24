@@ -10,7 +10,13 @@ export const DEFAULT_GUARDRAILS = {
   // well before the rover would actually tip, not right at the edge.
   maxSlopeDeg: 25,          // legs steeper than this are a hazard
   hazardMode: "reroute",    // "stop" (halt at the hazard) | "reroute" (try a local detour)
-  maxAutonomousDistanceM: 300, // total plan distance cap before the co-pilot holds
+  // Total plan distance cap before the co-pilot holds. Must comfortably
+  // clear the Mars goal (~1.82km straight-line from spawn, longer via a
+  // safe A*-style route) so a first-time player's plan doesn't HOLD for no
+  // visible reason (see H2). 3000m clears the real routed distance with
+  // margin; the guardrail input still lets a player raise it further, or
+  // lower it for a deliberately short local excursion / the HOLD demo.
+  maxAutonomousDistanceM: 3000,
   lookaheadRadiusM: 60,     // how far around a hazard the reroute search is allowed to look
 };
 
@@ -92,7 +98,10 @@ function findSafePath(from, to, terrain, guardrails) {
       const ny = current.y + dy * cell;
       if (nx < minX || nx > maxX || ny < minY || ny > maxY) continue;
       if (terrain.noData?.(nx, ny)) continue; // infinite cost: never step onto a no-data cell
-      if (terrain.slopeDeg(nx, ny) > guardrails.maxSlopeDeg) continue;
+      // Check the whole EDGE (sampled at sub-cell spacing), not just the
+      // neighbor node itself: a detour leg can cross a hazard narrower than
+      // one grid cell even when both endpoints are individually safe (M6).
+      if (findHazardOnSegment(current, { x: nx, y: ny }, terrain, guardrails.maxSlopeDeg)) continue;
       const nk = keyOf(nx, ny);
       const existing = nodes.get(nk);
       if (existing?.closed) continue;

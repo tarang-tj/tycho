@@ -364,7 +364,7 @@ export function createScene(canvas, terrain, opts = {}) {
       const list = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
       for (const m of list) { m.map?.dispose?.(); m.normalMap?.dispose?.(); m.dispose(); }
     });
-    for (const t of [detailA, detailB, detailC, fillTex, demNormalTex, sprite, U.uDemAlbedo.value]) t?.dispose?.();
+    for (const t of [detailA, detailB, detailC, fillTex, realMaskTex, demNormalTex, sprite, U.uDemAlbedo.value]) t?.dispose?.();
     sunMask.dispose();
     env.dispose();
     sky.dispose();

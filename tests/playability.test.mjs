@@ -19,6 +19,8 @@ import { parseTerrain } from "../web/terrain-data.js";
 import { createRover, stepRover, steerTowardPoint } from "../web/rover-sim.js";
 import { createSignalLink } from "../web/signal.js";
 import { planRoute, DEFAULT_GUARDRAILS } from "../web/copilot.js";
+import { createMission, startMission, updateMission, whatHappenedLine } from "../web/mission.js";
+import { MARS_SCENARIOS } from "../web/levels.js";
 import { findGlobalPath } from "./helpers/grid-astar.mjs";
 
 const ASSETS_ROOT = fileURLToPath(new URL("../assets/", import.meta.url));
@@ -68,7 +70,7 @@ for (const body of ["moon", "mars"]) {
   });
 }
 
-// --- Moon: live delayed-telemetry bot -------------------------------------
+// --- Moon: live delayed-telemetry bot, driven through the REAL mission state machine ---
 
 test("moon: a delayed-telemetry bot reaches the goal from spawn without tipping or driving onto no-data terrain", () => {
   const terrain = loadRealTerrain("moon");
@@ -98,9 +100,11 @@ test("moon: a delayed-telemetry bot reaches the goal from spawn without tipping 
   const BUDGET_S = 3000; // generous SIMULATED time; runs in well under a second of wall clock
   let maxSlopeEncountered = 0;
   let simTime = 0;
-  let arrived = false;
 
-  for (; simTime < BUDGET_S; simTime += dt) {
+  let mission = startMission(createMission("moon"), 0);
+  let visibleState = null;
+
+  for (; simTime < BUDGET_S && mission.status === "active"; simTime += dt) {
     for (const cmd of signal.pullDeliveredCommands(simTime)) currentControl = cmd;
 
     trueState = stepRover(trueState, currentControl, terrain, dt);
@@ -108,92 +112,108 @@ test("moon: a delayed-telemetry bot reaches the goal from spawn without tipping 
     assert.equal(trueState.stopped, false, `moon bot stopped (${trueState.stopReason}) at simTime=${simTime.toFixed(2)}s`);
     maxSlopeEncountered = Math.max(maxSlopeEncountered, trueState.slopeDeg);
 
-    signal.telemetry(trueState, simTime);
+    // Mirrors main.js's tickPhysics telemetry stamp: Moon has no sol plan, so
+    // planActive is always true (mission.js only gates the stall clock on it
+    // for Mars - see the C1 fix in mission.js).
+    signal.telemetry({ ...trueState, copilotHold: null, planActive: true }, simTime);
     const visible = signal.visibleTelemetry(simTime);
+    if (visible) visibleState = visible;
 
-    const distTrueToGoal = Math.hypot(trueState.x - goal.x, trueState.y - goal.y) * terrain.metersPerPixel;
-    if (distTrueToGoal <= GOAL_RADIUS_M) { arrived = true; break; }
+    mission = updateMission(mission, { visibleTelemetry: visibleState, simTime, terrain, telemetryAgeSec: signal.telemetryAge(simTime) });
 
-    if (visible && simTime - lastCommandAt >= CONTROL_INTERVAL_S) {
+    if (visibleState && simTime - lastCommandAt >= CONTROL_INTERVAL_S) {
       lastCommandAt = simTime;
       let target = path[waypointIndex] ?? goal;
-      const distM = Math.hypot(visible.state.x - target.x, visible.state.y - target.y) * terrain.metersPerPixel;
+      const distM = Math.hypot(visibleState.state.x - target.x, visibleState.state.y - target.y) * terrain.metersPerPixel;
       if (distM < WAYPOINT_ARRIVE_RADIUS_M && waypointIndex < path.length - 1) { waypointIndex += 1; target = path[waypointIndex]; }
-      const control = steerTowardPoint(visible.state, target);
+      const control = steerTowardPoint(visibleState.state, target);
       signal.uplink(control, simTime);
     }
   }
 
-  assert.ok(arrived, `moon bot failed to reach the goal within ${BUDGET_S}s (sim); final true position (${trueState.x.toFixed(1)},${trueState.y.toFixed(1)}), tipped=${trueState.tipped}`);
+  assert.equal(mission.status, "won", `moon bot failed to reach the goal within ${BUDGET_S}s (sim); mission ended "${mission.status}" (${whatHappenedLine(mission)}); final true position (${trueState.x.toFixed(1)},${trueState.y.toFixed(1)})`);
+  assert.equal(mission.outcome, "arrived");
   console.log(`  [moon bot] arrived in ${simTime.toFixed(1)}s sim time, max slope encountered ${maxSlopeEncountered.toFixed(1)}deg, path points ${path.length}`);
 });
 
-// --- Mars: uplinked sol plan driven by the co-pilot ------------------------
+// --- Mars: uplinked sol plan driven by the co-pilot, ALL 3 scenarios, real defaults ---
+//
+// This is also the C1 AND H2 regression test: it runs the REAL mission
+// state machine (web/mission.js) for every real delay scenario in
+// web/levels.js, with the shipped DEFAULT_GUARDRAILS untouched (no test-only
+// override) - exactly what a first-time player gets on Start. Before the
+// C1/H2 fixes this stalled on "typical" and "near conjunction" (the stall
+// clock started before the player could see any motion) and HELD outright
+// on the shipped 300m default distance cap.
 
-test("mars: a 2-4 waypoint sol plan uplinked through the compressed delay reaches the goal under default guardrails", () => {
-  const terrain = loadRealTerrain("mars");
-  const { spawn, goal } = terrain.meta;
-  const delaySec = 12 * 60 / 40; // "typical" scenario from web/levels.js: 12 min real, compressed 40x
+for (const scenario of MARS_SCENARIOS) {
+  test(`mars (${scenario.label}): a sol plan uplinked through the real ${scenario.label} delay reaches the goal under the shipped DEFAULT guardrails`, () => {
+    const terrain = loadRealTerrain("mars");
+    const { spawn, goal } = terrain.meta;
+    const delaySec = (scenario.realMinutes * 60) / scenario.compression;
 
-  const { path } = findGlobalPath(terrain, spawn, goal, DEFAULT_GUARDRAILS.maxSlopeDeg);
-  assert.ok(path, "precondition: a safe route must exist under the default slope guardrail");
-  const waypoints = downsample(path, 4); // 4 waypoints: within the plan's 2-4 waypoint spec
-  waypoints[waypoints.length - 1] = { x: goal.x, y: goal.y }; // final leg lands exactly on the goal, not a grid-rounded approximation
-  assert.ok(waypoints.length >= 2 && waypoints.length <= 4);
+    const { path } = findGlobalPath(terrain, spawn, goal, DEFAULT_GUARDRAILS.maxSlopeDeg);
+    assert.ok(path, "precondition: a safe route must exist under the default slope guardrail");
+    const waypoints = downsample(path, 4); // 4 waypoints: within the plan's 2-4 waypoint spec
+    waypoints[waypoints.length - 1] = { x: goal.x, y: goal.y }; // final leg lands exactly on the goal, not a grid-rounded approximation
+    assert.ok(waypoints.length >= 2 && waypoints.length <= 4);
 
-  const signal = createSignalLink(delaySec);
-  let trueState = createRover({ x: spawn.x, y: spawn.y, heading: 0 });
-  signal.uplink({ type: "plan", waypoints }, 0);
+    const signal = createSignalLink(delaySec);
+    let trueState = createRover({ x: spawn.x, y: spawn.y, heading: 0 });
+    let mission = startMission(createMission("mars"), 0);
+    let visibleState = null;
+    let autopilot = null;
+    signal.uplink({ type: "plan", waypoints }, 0);
 
-  // Guardrails: default slope/hazard-mode/lookahead, with maxAutonomousDistanceM
-  // raised to fit this plan's real length - exactly what a player does when
-  // planning a multi-km sol (the 300m default is sized for short excursions).
-  const planDistanceM = waypoints.reduce((sum, wp, i) => {
-    const prev = i === 0 ? spawn : waypoints[i - 1];
-    return sum + Math.hypot(wp.x - prev.x, wp.y - prev.y) * terrain.metersPerPixel;
-  }, 0);
-  const guardrails = { ...DEFAULT_GUARDRAILS, maxAutonomousDistanceM: planDistanceM * 1.5 };
+    // The shipped defaults, unmodified: this IS the H2 regression check.
+    const guardrails = DEFAULT_GUARDRAILS;
 
-  let autopilot = null;
-  const dt = 1 / 10;
-  const BUDGET_S = 1200;
-  let maxSlopeEncountered = 0;
-  let simTime = 0;
-  let arrived = false;
-  let planDelivered = false;
-  let movedBeforeDelivery = false;
+    const dt = 1 / 10;
+    const BUDGET_S = 2400;
+    let maxSlopeEncountered = 0;
+    let simTime = 0;
+    let planDelivered = false;
+    let movedBeforeDelivery = false;
 
-  for (; simTime < BUDGET_S; simTime += dt) {
-    for (const cmd of signal.pullDeliveredCommands(simTime)) {
-      assert.equal(cmd.type, "plan");
-      planDelivered = true;
-      const result = planRoute({ x: trueState.x, y: trueState.y }, cmd.waypoints, terrain, guardrails);
-      assert.equal(result.status, "OK", `co-pilot HOLD on delivery: ${result.reason}`);
-      autopilot = { path: result.path, index: 0 };
-    }
-    if (!planDelivered && (trueState.x !== spawn.x || trueState.y !== spawn.y)) movedBeforeDelivery = true;
-
-    let control = { throttle: 0, steer: 0 };
-    if (autopilot) {
-      const target = autopilot.path[autopilot.index];
-      if (target) {
-        control = steerTowardPoint(trueState, target);
-        const distM = Math.hypot(target.x - trueState.x, target.y - trueState.y) * terrain.metersPerPixel;
-        if (distM < WAYPOINT_ARRIVE_RADIUS_M) autopilot.index += 1;
+    for (; simTime < BUDGET_S && mission.status === "active"; simTime += dt) {
+      for (const cmd of signal.pullDeliveredCommands(simTime)) {
+        assert.equal(cmd.type, "plan");
+        planDelivered = true;
+        const result = planRoute({ x: trueState.x, y: trueState.y }, cmd.waypoints, terrain, guardrails);
+        autopilot = { path: result.path, index: 0, holdReason: result.status === "HOLD" ? result.reason : null };
       }
+      if (!planDelivered && (trueState.x !== spawn.x || trueState.y !== spawn.y)) movedBeforeDelivery = true;
+
+      let control = { throttle: 0, steer: 0 };
+      if (autopilot && !autopilot.holdReason) {
+        const target = autopilot.path[autopilot.index];
+        if (target) {
+          control = steerTowardPoint(trueState, target);
+          const distM = Math.hypot(target.x - trueState.x, target.y - trueState.y) * terrain.metersPerPixel;
+          if (distM < WAYPOINT_ARRIVE_RADIUS_M) autopilot.index += 1;
+        }
+      }
+
+      trueState = stepRover(trueState, control, terrain, dt);
+      assert.equal(trueState.tipped, false, `mars rover (${scenario.key}) tipped at simTime=${simTime.toFixed(2)}s`);
+      assert.equal(trueState.stopped, false, `mars rover (${scenario.key}) stopped (${trueState.stopReason}) at simTime=${simTime.toFixed(2)}s`);
+      maxSlopeEncountered = Math.max(maxSlopeEncountered, trueState.slopeDeg);
+
+      // Mirrors main.js's tickPhysics telemetry stamp exactly: copilotHold/
+      // planActive/autopilotPath ride the SAME delayed channel as position
+      // (see the C1/H1 fixes) - the mission state machine never sees them
+      // before the player would.
+      signal.telemetry({ ...trueState, copilotHold: autopilot?.holdReason ?? null, planActive: !!autopilot, autopilotPath: autopilot?.path ?? null }, simTime);
+      const visible = signal.visibleTelemetry(simTime);
+      if (visible) visibleState = visible;
+
+      mission = updateMission(mission, { visibleTelemetry: visibleState, simTime, terrain, telemetryAgeSec: signal.telemetryAge(simTime) });
     }
 
-    trueState = stepRover(trueState, control, terrain, dt);
-    assert.equal(trueState.tipped, false, `mars rover tipped at simTime=${simTime.toFixed(2)}s`);
-    assert.equal(trueState.stopped, false, `mars rover stopped (${trueState.stopReason}) at simTime=${simTime.toFixed(2)}s`);
-    maxSlopeEncountered = Math.max(maxSlopeEncountered, trueState.slopeDeg);
-
-    const distToGoal = Math.hypot(trueState.x - goal.x, trueState.y - goal.y) * terrain.metersPerPixel;
-    if (distToGoal <= GOAL_RADIUS_M) { arrived = true; break; }
-  }
-
-  assert.equal(movedBeforeDelivery, false, "the rover must not move before the delayed plan arrives");
-  assert.ok(planDelivered, "the sol plan never arrived within the sim budget");
-  assert.ok(arrived, `mars rover failed to reach the goal within ${BUDGET_S}s (sim); final position (${trueState.x.toFixed(1)},${trueState.y.toFixed(1)})`);
-  console.log(`  [mars bot] arrived in ${simTime.toFixed(1)}s sim time (delay ${delaySec.toFixed(1)}s), max slope encountered ${maxSlopeEncountered.toFixed(1)}deg, ${waypoints.length} waypoints, plan distance ${planDistanceM.toFixed(0)}m`);
-});
+    assert.equal(movedBeforeDelivery, false, "the rover must not move before the delayed plan arrives");
+    assert.ok(planDelivered, "the sol plan never arrived within the sim budget");
+    assert.equal(mission.status, "won", `mars (${scenario.key}, ${scenario.label}): expected "won", got "${mission.status}" at simTime=${simTime.toFixed(1)}s (${whatHappenedLine(mission)}); true pos (${trueState.x.toFixed(1)},${trueState.y.toFixed(1)})`);
+    assert.equal(mission.outcome, "arrived");
+    console.log(`  [mars bot ${scenario.key}] arrived in ${simTime.toFixed(1)}s sim time (delay ${delaySec.toFixed(1)}s), max slope encountered ${maxSlopeEncountered.toFixed(1)}deg, ${waypoints.length} waypoints`);
+  });
+}

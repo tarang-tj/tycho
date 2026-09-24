@@ -145,7 +145,13 @@ function buildTerrain({ width, height, metersPerPixel, elevations, synthetic, me
     return top + (bottom - top) * ty;
   }
 
-  return { width, height, metersPerPixel, synthetic, elev, slopeDeg, normal, noData, hasMask: !!mask, meta };
+  // "Has a mask worth showing the no-data legend for" - an all-zero mask
+  // (every cell has real orbital data, e.g. Mars's shipped mask.bin) is
+  // still a mask object, but `!!mask` alone would wrongly flag it as
+  // having no-data terrain and show the legend anyway.
+  const hasMask = !!mask && mask.some((v) => v !== 0);
+
+  return { width, height, metersPerPixel, synthetic, elev, slopeDeg, normal, noData, hasMask, meta };
 }
 
 /**

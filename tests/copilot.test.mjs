@@ -99,6 +99,33 @@ test("hazardMode 'stop' holds with a 'no orbital data' reason when the hazard is
   assert.match(result.reason, /no orbital data/);
 });
 
+test("M6: a detour never crosses a hazard narrower than one grid cell, even between two safe nodes", () => {
+  // A thin steep spike sits exactly between two grid nodes the reroute
+  // search would otherwise connect directly (both node centers are safe;
+  // only the edge between them clips the spike). Node-only checking would
+  // let this edge through; edge sampling (findHazardOnSegment) must not.
+  const terrain = {
+    metersPerPixel: 1,
+    slopeDeg: (x, y) => (x >= 19 && x < 21 && Math.abs(y) < 8 ? 80 : 3),
+    elev: () => 0,
+    noData: () => false,
+  };
+  const guardrails = { ...DEFAULT_GUARDRAILS, hazardMode: "reroute", maxSlopeDeg: 25, lookaheadRadiusM: 30, maxAutonomousDistanceM: 500 };
+  const result = planRoute({ x: 0, y: 0 }, [{ x: 40, y: 0 }], terrain, guardrails);
+  assert.equal(result.status, "OK");
+  // Every consecutive pair of points in the chosen path - the whole edge,
+  // not just each endpoint - must clear the spike.
+  for (let i = 1; i < result.path.length; i++) {
+    const a = result.path[i - 1], b = result.path[i];
+    const steps = 20;
+    for (let s = 0; s <= steps; s++) {
+      const t = s / steps;
+      const x = a.x + (b.x - a.x) * t, y = a.y + (b.y - a.y) * t;
+      assert.ok(terrain.slopeDeg(x, y) <= guardrails.maxSlopeDeg, `edge (${a.x},${a.y})->(${b.x},${b.y}) clips the spike at (${x.toFixed(1)},${y.toFixed(1)})`);
+    }
+  }
+});
+
 test("empty waypoint list yields an OK no-op plan", () => {
   const terrain = { metersPerPixel: 1, slopeDeg: () => 2, elev: () => 0 };
   const result = planRoute({ x: 0, y: 0 }, [], terrain, DEFAULT_GUARDRAILS);

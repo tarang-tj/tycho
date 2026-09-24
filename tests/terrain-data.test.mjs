@@ -114,3 +114,13 @@ test("noData() is false everywhere when no mask is supplied, and reads a supplie
   assert.equal(maskedTerrain.noData(2, 1), true);
   assert.equal(maskedTerrain.noData(0, 0), false);
 });
+
+test("an all-zero mask (e.g. Mars's shipped mask.bin: every cell has real data) does not set hasMask", () => {
+  const width = 4, height = 4;
+  const meta = { width, height, metersPerPixel: 1, minElev: 0, maxElev: 100 };
+  const buffer = new ArrayBuffer(width * height * 2);
+  const allZeroMask = new Uint8Array(width * height); // every cell = 0 = "has data"
+  const terrain = parseTerrain(buffer, meta, allZeroMask.buffer);
+  assert.equal(terrain.hasMask, false, "an all-zero mask must not trigger the 'no orbital data' legend");
+  assert.equal(terrain.noData(0, 0), false);
+});

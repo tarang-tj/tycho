@@ -14,5 +14,8 @@
     "type": "git",
     "url": "https://github.com/tarang-tj/tycho.git"
   },
+  "devDependencies": {
+    "playwright": "^1.47.0"
+  },
   "license": "MIT"
 }

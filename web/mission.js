@@ -10,7 +10,7 @@ export const BRIEFS = {
   moon: [
     "LUNOKHOD - MOON, TYCHO CENTRAL PEAK",
     "One-way delay 1.28 s: close enough to steer live, like the 1970s Soviet crews did.",
-    "Reach the summit marker without exceeding the slope limit or stalling out.",
+    "Reach the high-point marker near the top of Tycho's central peak, without exceeding the slope limit or stalling out.",
   ],
   mars: [
     "JEZERO - MARS SOL PLAN",
@@ -31,8 +31,11 @@ export function createMission(levelKey) {
     delaySampleSum: 0,
     delaySampleCount: 0,
     progressBestM: Infinity,
-    stallSinceSimTime: null,
-    planUplinked: false,
+    // Rover-true time (visibleTelemetry.sentAt) the stall clock started, NOT
+    // simTime (see C1: simTime is the present-time clock and includes the
+    // one-way telemetry delay the player hasn't seen through yet, which used
+    // to run the stall clock down before any progress could even arrive).
+    stallSinceRoverTime: null,
     copilotHoldReason: null,
   };
 }
@@ -51,6 +54,12 @@ export function startMission(mission, simTime) {
 export function updateMission(mission, { visibleTelemetry, simTime, terrain, telemetryAgeSec }) {
   if (mission.status !== "active" || !visibleTelemetry) return mission;
   const state = visibleTelemetry.state;
+  // Rover-true timestamp of THIS visible snapshot (when the rover actually
+  // generated it, not when the player received it). Using this - not
+  // simTime - as the stall-clock basis means the constant one-way telemetry
+  // delay cancels out between samples instead of silently eating into the
+  // timeout (see C1).
+  const roverTime = visibleTelemetry.sentAt;
   let m = { ...mission };
 
   if (m.lastPos) {
@@ -83,25 +92,22 @@ export function updateMission(mission, { visibleTelemetry, simTime, terrain, tel
   }
 
   // Mars sol plans sit parked at spawn while the player is still placing
-  // waypoints; only start the stall clock once a plan has actually been
-  // uplinked (or immediately, for Moon's live driving).
-  const stallEligible = mission.level !== "mars" || m.planUplinked;
+  // waypoints; only start the stall clock once the VISIBLE telemetry itself
+  // shows the plan is active on the rover (state.planActive, stamped by the
+  // caller - see main.js's tickPhysics) - never at the rover's true
+  // present-time delivery moment, which the player can't see yet (C1/H1).
+  const stallEligible = mission.level !== "mars" || state.planActive;
   if (stallEligible && distToGoal != null) {
     if (distToGoal < m.progressBestM - STALL_PROGRESS_EPS_M) {
       m.progressBestM = distToGoal;
-      m.stallSinceSimTime = null;
-    } else if (m.stallSinceSimTime == null) {
-      m.stallSinceSimTime = simTime;
-    } else if (simTime - m.stallSinceSimTime > STALL_TIMEOUT_S) {
+      m.stallSinceRoverTime = null;
+    } else if (m.stallSinceRoverTime == null) {
+      m.stallSinceRoverTime = roverTime;
+    } else if (roverTime - m.stallSinceRoverTime > STALL_TIMEOUT_S) {
       return { ...m, status: "stalled", outcome: "stalled", endSimTime: simTime };
     }
   }
   return m;
-}
-
-/** Mark that a sol plan has been uplinked (Mars only), enabling the stall clock. */
-export function markPlanUplinked(mission) {
-  return { ...mission, planUplinked: true };
 }
 
 export function averageDelaySec(mission) {

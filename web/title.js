@@ -3,6 +3,8 @@
 // owns level loading). The scene watches body.title-open: attract orbit while
 // open, cinematic intro when it closes. Also mirrors the active level onto
 // <html data-body> so CSS can switch the accent colour per body.
+import { isOpen as isAboutOpen } from "./about-data-panel.js";
+
 const screen = document.getElementById("title-screen");
 const cards = [...document.querySelectorAll(".level-card")];
 const startBtn = document.getElementById("titleStart");
@@ -32,6 +34,7 @@ for (const card of cards) {
 startBtn?.addEventListener("click", start);
 window.addEventListener("keydown", (event) => {
   if (!document.body.classList.contains("title-open")) return;
+  if (isAboutOpen()) return; // L6: don't let Enter start the game underneath the About dialog
   if (event.key === "Enter") { event.preventDefault(); start(); }
   if (event.key === "ArrowRight" || event.key === "ArrowLeft") select(selected === "moon" ? "mars" : "moon");
 });

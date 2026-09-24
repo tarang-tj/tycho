@@ -35,7 +35,11 @@ export function saveScoreboard(data) {
  * not mutate the input). `run`: { outcome, timeSec, distanceM, copilotOn }.
  */
 export function recordRun(data, levelKey, run) {
-  const runs = data[levelKey] ? [...data[levelKey]] : [];
+  // Tolerate tampered/corrupt storage (e.g. `{"moon":5}`): only spread a
+  // real array, otherwise start a fresh history for this level (L4) - a
+  // render-loop exception here would otherwise freeze the whole game.
+  const existing = data[levelKey];
+  const runs = Array.isArray(existing) ? [...existing] : [];
   runs.push({ ...run, at: Date.now() });
   return { ...data, [levelKey]: runs };
 }

@@ -60,6 +60,13 @@ test("recordRun appends without mutating the original data", () => {
   assert.equal(after.moon.length, 2);
 });
 
+test("L4: recordRun tolerates a tampered non-array value for a level (e.g. {\"moon\":5}) instead of throwing", () => {
+  const before = { moon: 5 }; // corrupt/tampered localStorage shape
+  const after = recordRun(before, "moon", { outcome: "arrived", timeSec: 1, distanceM: 1, copilotOn: false });
+  assert.equal(Array.isArray(after.moon), true);
+  assert.equal(after.moon.length, 1);
+});
+
 test("aggregate computes overall and co-pilot on/off success rates", () => {
   let data = {};
   data = recordRun(data, "mars", { outcome: "arrived", timeSec: 10, distanceM: 50, copilotOn: true });
