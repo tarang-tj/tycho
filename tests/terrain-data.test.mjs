@@ -59,3 +59,58 @@ test("parseTerrain reads Uint16 LE height.bin into meter elevations", () => {
   assert.ok(Math.abs(terrain.elev(1, 1) - 1000) < 1);
   assert.ok(Math.abs(terrain.elev(0, 0) - 0) < 1);
 });
+
+test("slopeDeg is measured over a rover-scale baseline, not a single noisy pixel", () => {
+  // A perfectly flat plane (0deg true slope) with alternating +-0.5m
+  // per-pixel checkerboard noise, mimicking real DTM stereo-correlation
+  // noise. A single-pixel central difference reads this as a near-cliff
+  // (atan(1m / 1 * mpp) at mpp=2.34 -> ~23deg minimum, worse at smaller
+  // mpp); the smoothed slope grid must read it as gentle.
+  const width = 64, height = 64, metersPerPixel = 2.34;
+  const meta = { width, height, metersPerPixel, minElev: -10, maxElev: 10 };
+  const buffer = new ArrayBuffer(width * height * 2);
+  const view = new DataView(buffer);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const noisy = ((x + y) % 2 === 0) ? 0.5 : -0.5; // true elevation: flat plane + checkerboard noise
+      const t = (noisy - meta.minElev) / (meta.maxElev - meta.minElev);
+      view.setUint16((y * width + x) * 2, Math.round(t * 65535), true);
+    }
+  }
+  const terrain = parseTerrain(buffer, meta);
+  const slope = terrain.slopeDeg(32, 32);
+  assert.ok(slope < 10, `noisy-but-flat plane should read gentle, got ${slope.toFixed(1)}deg`);
+});
+
+test("slopeDeg still reads a real, non-noisy incline as steep", () => {
+  const width = 64, height = 64, metersPerPixel = 2.34;
+  const meta = { width, height, metersPerPixel, minElev: 0, maxElev: 200 };
+  const buffer = new ArrayBuffer(width * height * 2);
+  const view = new DataView(buffer);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const elevM = x * 3; // a real, steady ~52deg ramp (3m rise per 2.34m pixel)
+      const t = Math.max(0, Math.min(1, elevM / meta.maxElev));
+      view.setUint16((y * width + x) * 2, Math.round(t * 65535), true);
+    }
+  }
+  const terrain = parseTerrain(buffer, meta);
+  const slope = terrain.slopeDeg(32, 32);
+  assert.ok(slope > 40, `a real steady incline should read steep, got ${slope.toFixed(1)}deg`);
+});
+
+test("noData() is false everywhere when no mask is supplied, and reads a supplied mask correctly", () => {
+  const width = 4, height = 4;
+  const meta = { width, height, metersPerPixel: 1, minElev: 0, maxElev: 100 };
+  const buffer = new ArrayBuffer(width * height * 2);
+  const noMaskTerrain = parseTerrain(buffer, meta);
+  assert.equal(noMaskTerrain.noData(1, 1), false);
+  assert.equal(noMaskTerrain.hasMask, false);
+
+  const mask = new Uint8Array(width * height);
+  mask[1 * width + 2] = 1; // (x=2, y=1) is no-data
+  const maskedTerrain = parseTerrain(buffer, meta, mask.buffer);
+  assert.equal(maskedTerrain.hasMask, true);
+  assert.equal(maskedTerrain.noData(2, 1), true);
+  assert.equal(maskedTerrain.noData(0, 0), false);
+});

@@ -25,6 +25,7 @@ export function createSurfaceUniforms() {
     uHsMean: { value: 0.45 },
     uHsStrength: { value: 0.3 },
     uFillMask: { value: null },
+    uRealMask: { value: null },
     uCurvR: { value: 1737400 },
     uPatchCenter: { value: new THREE.Vector2(1e9, 1e9) },
     uPatchHalf: { value: 0 },
@@ -74,6 +75,7 @@ uniform float uDetailStrength;
 uniform float uDetailAlbedo;
 uniform sampler2D uDemAlbedo;
 uniform sampler2D uFillMask;
+uniform sampler2D uRealMask;
 uniform float uHasDemAlbedo;
 uniform float uHsMean;
 uniform float uHsStrength;
@@ -122,11 +124,21 @@ const FRAG_ALBEDO = /* glsl */ `
   float alb = 1.0 + ((dA.a - 0.5) * 0.9 + ((dB.a - 0.5) * 1.1 * (1.0 - tFar)
     + (dC.a - 0.5) * 1.2 * tMidWeight(distance(vTWorld, cameraPosition))) * tFlat) * uDetailAlbedo;
   vec2 duv = tDemUv();
+  float realMask = 0.0;
   if (uHasDemAlbedo > 0.5 && tInDem(duv)) {
     float hs = texture2D(uDemAlbedo, vec2(duv.x, 1.0 - duv.y)).g;
+    // fill = the render-only heuristic ("this looked like a flat re-sampled
+    // run") used to suppress the hillshade so re-filled DEM edges don't draw
+    // as visible stripes. realMask = the ACTUAL assets/<body>/mask.bin no-
+    // orbital-data flag: for those cells we do the OPPOSITE - keep the
+    // albedo's baked-in hatch/desaturation (raster_ops.apply_nodata_hatch)
+    // and darken further, so "no data" reads unmistakably, never as
+    // ordinary-looking terrain.
     float fill = texture2D(uFillMask, duv).r;
-    alb *= mix(1.0, clamp(hs / uHsMean, 0.55, 1.6), uHsStrength * (1.0 - fill));
+    realMask = texture2D(uRealMask, duv).r;
+    alb *= mix(1.0, clamp(hs / uHsMean, 0.55, 1.6), uHsStrength * (1.0 - fill) * (1.0 - realMask) + uHsStrength * realMask);
   }
+  alb *= mix(1.0, 0.5, realMask); // extra darken: masked cells always read visibly dimmer
   diffuseColor.rgb *= alb;
 }
 #endif

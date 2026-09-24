@@ -13,9 +13,14 @@ function approach(current, target, rate, dt) {
   return current + (target - current) * (1 - Math.exp(-rate * dt));
 }
 
-export function createCameraRig(camera, dom, { groundAt, openingDir }) {
+export function createCameraRig(camera, dom, { groundAt, openingDir, body }) {
+  // Mars's 20 m/px terrain reads much emptier than the Moon's 2.34 m/px
+  // terrain at the same camera distance, so the default chase pose sits
+  // closer and lower on Mars to keep the rover reading large against it.
+  const isMars = body === "mars";
   const st = {
-    mode: "chase", yawOff: 0, pitch: 0.13, dist: 5.8, lift: 0.95, ahead: 2.2, lastInput: -10, time: 0,
+    mode: "chase", yawOff: 0, pitch: isMars ? 0.1 : 0.13, dist: isMars ? 4.4 : 5.8,
+    lift: isMars ? 0.62 : 0.95, ahead: 2.2, lastInput: -10, time: 0,
     introT: 0, introFrom: null, attractAngle: 0, heading: 0, init: false,
   };
   const pointers = new Map();

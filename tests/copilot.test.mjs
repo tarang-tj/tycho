@@ -76,6 +76,29 @@ test("multi-waypoint plan chains legs and accumulates distance", () => {
   assert.ok(Math.abs(result.distanceM - 20) < 1e-6);
 });
 
+test("a no-data cell blocking the direct path is treated as infinite cost: reroute finds another way", () => {
+  const terrain = {
+    metersPerPixel: 1,
+    slopeDeg: () => 3,
+    elev: () => 0,
+    noData: (x, y) => x >= 18 && x <= 22 && y >= -6 && y <= 6,
+  };
+  const guardrails = { ...DEFAULT_GUARDRAILS, hazardMode: "reroute", lookaheadRadiusM: 30, maxAutonomousDistanceM: 500 };
+  const result = planRoute({ x: 0, y: 0 }, [{ x: 40, y: 0 }], terrain, guardrails);
+  assert.equal(result.status, "OK");
+  for (const p of result.path) {
+    assert.equal(terrain.noData(p.x, p.y), false, `point (${p.x},${p.y}) must avoid the no-data cell`);
+  }
+});
+
+test("hazardMode 'stop' holds with a 'no orbital data' reason when the hazard is a masked cell", () => {
+  const terrain = { metersPerPixel: 1, slopeDeg: () => 3, elev: () => 0, noData: (x) => x >= 18 };
+  const guardrails = { ...DEFAULT_GUARDRAILS, hazardMode: "stop" };
+  const result = planRoute({ x: 0, y: 0 }, [{ x: 40, y: 0 }], terrain, guardrails);
+  assert.equal(result.status, "HOLD");
+  assert.match(result.reason, /no orbital data/);
+});
+
 test("empty waypoint list yields an OK no-op plan", () => {
   const terrain = { metersPerPixel: 1, slopeDeg: () => 2, elev: () => 0 };
   const result = planRoute({ x: 0, y: 0 }, [], terrain, DEFAULT_GUARDRAILS);

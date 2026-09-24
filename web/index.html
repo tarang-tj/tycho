@@ -25,6 +25,7 @@
     <div class="scene-vignette" aria-hidden="true"></div>
     <p id="sceneFallback" class="scene-fallback" hidden>WebGL is unavailable in this browser. TYCHO needs a WebGL-capable browser to run.</p>
     <p id="terrainBanner" class="terrain-banner" hidden>Synthetic test terrain: real DEM assets not loaded</p>
+    <p id="noDataLegend" class="terrain-banner no-data-legend" hidden title="Cells with no orbital coverage were filled from nearby data during processing; mask.bin marks them impassable.">Dimmed, hatched ground = no orbital data there (not real terrain)</p>
     <p id="marsDelayNote" class="mars-delay-note" hidden>Mars delay compressed for play; real one-way delay: 3 to 22 minutes.</p>
   </div>
 
@@ -37,7 +38,24 @@
       <button type="button" data-level="moon" class="level-btn" aria-pressed="true">Lunokhod <span>Moon</span></button>
       <button type="button" data-level="mars" class="level-btn" aria-pressed="false">Jezero <span>Mars</span></button>
     </div>
+    <button type="button" id="aboutDataBtn" class="about-data-btn" aria-haspopup="dialog" aria-controls="aboutDataPanel">About the data</button>
   </header>
+
+  <div id="aboutDataPanel" class="about-data-panel" role="dialog" aria-modal="true" aria-labelledby="aboutDataTitle" hidden>
+    <div class="about-data-inner">
+      <div class="about-data-head">
+        <h2 id="aboutDataTitle">About the data</h2>
+        <button type="button" id="aboutDataClose" class="about-data-close" aria-label="Close">&times;</button>
+      </div>
+      <dl class="about-data-list">
+        <div><dt>Elevation is real</dt><dd>Moon: LROC NAC DTM NAC_DTM_TYCHOPK01, 2.34 m/px, NASA/GSFC/Arizona State University. Mars: USGS CTX DEM M20_JezeroCrater_CTXDEM_20m, 20 m/px, NASA/JPL-Caltech/MSSS/USGS. Both public domain / CC0.</dd></div>
+        <div><dt>Surface detail is procedural</dt><dd>Small craters, rocks, and regolith texture near the rover are generated decoration, not measured. Only the large-scale elevation shape comes from the real DEM.</dd></div>
+        <div><dt>Earth's position is approximate</dt><dd>Shown at its real apparent size and lit consistently with the sun, but its sky position and the geography visible on it are illustrative, not a precise ephemeris.</dd></div>
+        <div><dt>Mars delay is compressed for play</dt><dd>The real one-way light-time delay is 3 to 22 minutes depending on where Earth and Mars are in their orbits. This game compresses it 15x to 55x (labeled on screen each run) so a sol plan resolves in seconds, not real minutes.</dd></div>
+        <div><dt>What you see is the past</dt><dd>Every position, speed, and slope reading on the HUD is delayed telemetry: it already happened by the time it reaches you. The command you send now will not arrive at the rover for another full delay.</dd></div>
+      </dl>
+    </div>
+  </div>
 
   <aside class="hud" aria-label="Telemetry and controls">
     <p class="hud-eyebrow"><span class="link-dot" aria-hidden="true"></span>Telemetry <em>last known</em></p>
@@ -82,11 +100,12 @@
         </button>
       </div>
       <button type="button" class="title-start" id="titleStart">Start</button>
-      <p class="title-credits">Terrain: NASA/GSFC/Arizona State University (LROC) and USGS/NASA/JPL (CTX DEM). Surroundings beyond the DEM tile are procedural.</p>
+      <p class="title-credits">Terrain: NASA/GSFC/Arizona State University (LROC) and USGS/NASA/JPL (CTX DEM). Surroundings beyond the DEM tile are procedural. <button type="button" id="titleAboutDataBtn" class="about-data-link">About the data</button></p>
     </div>
   </section>
 
   <script type="module" src="title.js"></script>
+  <script type="module" src="about-data-panel.js"></script>
   <script type="module" src="main.js"></script>
 </body>
 </html>

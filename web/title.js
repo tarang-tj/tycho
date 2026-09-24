@@ -14,13 +14,14 @@ function select(level) {
   document.documentElement.dataset.body = level;
 }
 
+// Title's Start is a single step: closing the overlay also begins the
+// mission immediately (default delay scenario on Mars), instead of leaving
+// a second "Start mission" click gating the HUD brief panel behind it.
 function start() {
   if (!document.body.classList.contains("title-open")) return;
-  let current = null;
-  try { current = window.TYCHO?.getLevel?.() ?? null; } catch { current = null; }
   document.body.classList.remove("title-open");
   screen.setAttribute("aria-hidden", "true");
-  if (current !== selected) document.querySelector(`.level-btn[data-level="${selected}"]`)?.click();
+  window.TYCHO?.switchLevel?.(selected, { autoStart: true });
   document.getElementById("sceneCanvas")?.focus({ preventScroll: true });
 }
 

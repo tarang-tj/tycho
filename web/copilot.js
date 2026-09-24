@@ -5,6 +5,9 @@
 // No DOM/three.js dependency, deterministic, unit-testable in node.
 
 export const DEFAULT_GUARDRAILS = {
+  // Deliberately more conservative than rover-sim's own tip limit (32deg,
+  // see terrain-data.js SLOPE_BASELINE_M): the co-pilot is meant to hold
+  // well before the rover would actually tip, not right at the edge.
   maxSlopeDeg: 25,          // legs steeper than this are a hazard
   hazardMode: "reroute",    // "stop" (halt at the hazard) | "reroute" (try a local detour)
   maxAutonomousDistanceM: 300, // total plan distance cap before the co-pilot holds
@@ -23,7 +26,7 @@ function pixelDist(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
-/** First point along a->b (pixel coords) whose slope exceeds the limit, or null if the leg is safe. */
+/** First point along a->b (pixel coords) whose slope exceeds the limit or has no orbital data, or null if the leg is safe. */
 function findHazardOnSegment(a, b, terrain, maxSlopeDeg) {
   const distM = pixelDist(a, b) * terrain.metersPerPixel;
   const steps = Math.max(1, Math.ceil(distM / SAMPLE_STEP_M));
@@ -31,6 +34,7 @@ function findHazardOnSegment(a, b, terrain, maxSlopeDeg) {
     const t = i / steps;
     const x = a.x + (b.x - a.x) * t;
     const y = a.y + (b.y - a.y) * t;
+    if (terrain.noData?.(x, y)) return { x, y, slopeDeg: Infinity, noData: true };
     const slopeDeg = terrain.slopeDeg(x, y);
     if (slopeDeg > maxSlopeDeg) return { x, y, slopeDeg };
   }
@@ -87,6 +91,7 @@ function findSafePath(from, to, terrain, guardrails) {
       const nx = current.x + dx * cell;
       const ny = current.y + dy * cell;
       if (nx < minX || nx > maxX || ny < minY || ny > maxY) continue;
+      if (terrain.noData?.(nx, ny)) continue; // infinite cost: never step onto a no-data cell
       if (terrain.slopeDeg(nx, ny) > guardrails.maxSlopeDeg) continue;
       const nk = keyOf(nx, ny);
       const existing = nodes.get(nk);
@@ -110,7 +115,9 @@ function planLeg(from, to, terrain, guardrails) {
     return {
       status: "HOLD",
       points: [],
-      reason: `HOLD: slope ${hazard.slopeDeg.toFixed(0)}° exceeds the ${guardrails.maxSlopeDeg}° limit ahead`,
+      reason: hazard.noData
+        ? "HOLD: no orbital data ahead"
+        : `HOLD: slope ${hazard.slopeDeg.toFixed(0)}° exceeds the ${guardrails.maxSlopeDeg}° limit ahead`,
     };
   }
   const detour = findSafePath(from, to, terrain, guardrails);

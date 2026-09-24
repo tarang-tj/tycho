@@ -56,6 +56,28 @@ test("rover stops and flags tipped when slope exceeds the configured limit", () 
   assert.deepEqual({ x: state.x, y: state.y }, before, "a tipped rover must stay in place");
 });
 
+test("rover stops with reason 'no data' when driving onto a masked cell, without flagging tipped", () => {
+  const noDataTerrain = {
+    metersPerPixel: 1,
+    elev: () => 0,
+    slopeDeg: () => 0, // flat, would otherwise never tip
+    noData: (x) => x > 1, // impassable ahead of the rover
+  };
+  let state = createRover({ x: 0, y: 0, heading: 90 });
+  let stoppedAt = -1;
+  for (let i = 0; i < 200; i++) {
+    state = stepRover(state, { throttle: 1, steer: 0 }, noDataTerrain, 1 / 60);
+    if (state.stopped) { stoppedAt = i; break; }
+  }
+  assert.ok(stoppedAt >= 0, "rover should have stopped at the no-data boundary");
+  assert.equal(state.stopReason, "no data");
+  assert.equal(state.tipped, false, "a no-data stop is not a tip");
+  assert.equal(state.speed, 0);
+  const before = { x: state.x, y: state.y };
+  state = stepRover(state, { throttle: 1, steer: 0 }, noDataTerrain, 1 / 60);
+  assert.deepEqual({ x: state.x, y: state.y }, before, "a stopped rover must stay in place");
+});
+
 test("stepRover does not mutate the input state object", () => {
   const state = createRover({ x: 0, y: 0 });
   const frozen = Object.freeze({ ...state });

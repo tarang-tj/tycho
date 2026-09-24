@@ -12,9 +12,10 @@ import { createMission, startMission, updateMission, markPlanUplinked, whatHappe
 import { loadScoreboard, saveScoreboard, recordRun, aggregate } from "./scoreboard.js";
 import { createHud } from "./hud.js";
 import { LEVELS, resolveScenario } from "./levels.js";
+import { updateHudReadout } from "./hud-readout.js";
+import { wireControls } from "./controls.js";
 
 const FIXED_DT = 1 / 60;
-const MAX_SLOPE_DEG = 25;
 const WAYPOINT_ARRIVE_RADIUS_M = 6;
 const TERMINAL_STATUSES = new Set(["won", "tipped", "stalled", "held"]);
 
@@ -22,6 +23,7 @@ const canvas = document.getElementById("sceneCanvas");
 const el = {
   fallback: document.getElementById("sceneFallback"),
   terrainBanner: document.getElementById("terrainBanner"),
+  noDataLegend: document.getElementById("noDataLegend"),
   marsNote: document.getElementById("marsDelayNote"),
   body: document.getElementById("hudBody"),
   delay: document.getElementById("hudDelay"),
@@ -36,7 +38,7 @@ const hud = createHud(document.querySelector(".hud"));
 let terrain, scene, signal, trueState, visibleState = null;
 let simTime = 0;
 let currentControl = { throttle: 0, steer: 0 };
-let lastSentControl = { throttle: 0, steer: 0 };
+let controls = null; // set below by wireControls(); exposes resetIntent()
 let currentLevelKey = "moon";
 let rafId = null;
 let lastFrameMs = null;
@@ -45,6 +47,7 @@ let mission = createMission("moon");
 let lastMissionStatus = mission.status;
 let guardrails = { ...DEFAULT_GUARDRAILS };
 let autopilot = null; // { path: [{x,y}], index, holdReason }
+let plannedWaypoints = []; // the sol plan as uplinked, kept separate from the live autopilot path
 let scoreboardData = loadScoreboard();
 
 const api = {
@@ -55,7 +58,7 @@ const api = {
   sendCommand: (cmd) => sendCommand(cmd),
   getLevel: () => currentLevelKey,
   getTerrainInfo: () => (terrain ? { synthetic: terrain.synthetic, width: terrain.width, metersPerPixel: terrain.metersPerPixel, spawn: terrain.meta.spawn, goal: terrain.meta.goal } : null),
-  switchLevel: (key) => loadLevel(key),
+  switchLevel: (key, opts) => loadLevel(key, opts),
   debug: {
     placeRoverAt(x, y, heading = 0) {
       trueState = createRover({ x, y, heading });
@@ -74,31 +77,24 @@ const api = {
 };
 window.TYCHO = api;
 
+let pendingDownPulses = []; // sim-time thresholds at which a queued uplink's telemetry round-trip completes
+
+/** Pulse the signal-in-flight visual up now, and queue the matching downlink pulse for when it actually arrives. */
+function pulseUplink() {
+  if (!signal) return;
+  const delaySec = signal.oneWayDelaySec;
+  scene?.pulseSignal?.("up", delaySec);
+  pendingDownPulses.push(simTime + delaySec);
+}
+
 function sendCommand(cmd) {
   if (!signal || mission.status !== "active" || LEVELS[currentLevelKey].mode !== "live") return;
   signal.uplink(cmd, simTime);
-}
-
-function distanceToGoal() {
-  const goal = terrain?.meta?.goal;
-  if (!goal || !visibleState) return null;
-  const dx = (visibleState.state.x - goal.x) * terrain.metersPerPixel;
-  const dy = (visibleState.state.y - goal.y) * terrain.metersPerPixel;
-  return Math.hypot(dx, dy);
-}
-
-function updateHud() {
-  const level = LEVELS[currentLevelKey];
-  el.body.textContent = level.label;
-  el.delay.textContent = signal ? `${signal.oneWayDelaySec.toFixed(2)} s` : "--";
-  el.inFlight.textContent = String(signal ? signal.commandsInFlight(simTime) : 0);
-  const age = signal ? signal.telemetryAge(simTime) : null;
-  el.telemetryAge.textContent = age == null ? "no signal yet" : `${age.toFixed(1)} s ago`;
-  const vs = visibleState?.state;
-  el.speed.textContent = vs ? `${vs.speed.toFixed(2)} m/s` : "--";
-  el.slope.textContent = vs ? `${vs.slopeDeg.toFixed(1)}°` : "--";
-  const dist = distanceToGoal();
-  el.goalDist.textContent = dist == null ? "--" : `${dist.toFixed(0)} m`;
+  pulseUplink();
+  // Micro-feedback so the live delay is FELT the instant a key is pressed,
+  // not just visible later as a stale telemetry number: "sent" registers
+  // immediately, the arrival time is the real one-way delay.
+  hud.setStatusLine(`Sent, arrives in ${signal.oneWayDelaySec.toFixed(1)} s...`);
 }
 
 function handleMissionTransition() {
@@ -113,6 +109,11 @@ function handleMissionTransition() {
   });
   saveScoreboard(scoreboardData);
   hud.updateScoreboard(currentLevelKey, aggregate(scoreboardData, currentLevelKey));
+  // The reveal: at mission end, show the TRUE (present) rover position
+  // alongside whatever delayed telemetry the player was actually steering
+  // by, so the gap between "what you saw" and "where it really was" is visible.
+  scene?.setTrueRoverVisible?.(true);
+  scene?.updateTrueState?.(trueState);
   hud.showEndCard({
     outcome: mission.outcome, timeSec, distanceM: mission.distanceTraveledM,
     whatHappened: whatHappenedLine(mission),
@@ -126,9 +127,14 @@ function tickPhysics(dt) {
   for (const cmd of delivered) {
     if (cmd.type === "plan") {
       const result = planRoute({ x: trueState.x, y: trueState.y }, cmd.waypoints, terrain, guardrails);
+      const wasHeld = !!autopilot?.holdReason;
       autopilot = { path: result.path, index: 0, holdReason: result.status === "HOLD" ? result.reason : null };
       mission = markPlanUplinked(mission);
       hud.setStatusLine(result.status === "HOLD" ? result.reason : "Plan delivered; TYCHO is driving it.");
+      if (autopilot.holdReason && !wasHeld) {
+        const mpp = terrain.metersPerPixel;
+        scene?.flashHazard?.(trueState.x * mpp, trueState.y * mpp);
+      }
     } else {
       currentControl = cmd;
     }
@@ -146,14 +152,32 @@ function tickPhysics(dt) {
     }
   }
 
-  trueState = stepRover(trueState, control, terrain, dt, { maxSlopeDeg: MAX_SLOPE_DEG });
+  // No maxSlopeDeg override here: rover-sim's own default (a real tip
+  // angle measured over a rover-scale baseline, see terrain-data.js) is the
+  // physical limit. The co-pilot's guardrail (DEFAULT_GUARDRAILS.maxSlopeDeg,
+  // lower) is a separate, more conservative "hold before you'd actually tip"
+  // threshold applied only to autonomous Mars driving, not to this physics step.
+  trueState = stepRover(trueState, control, terrain, dt);
+  scene?.updateTrueState?.(trueState);
   signal.telemetry({ ...trueState, copilotHold: autopilot?.holdReason ?? null }, simTime);
   const visible = signal.visibleTelemetry(simTime);
   if (visible) visibleState = visible;
 
   mission = updateMission(mission, { visibleTelemetry: visibleState, simTime, terrain, telemetryAgeSec: signal.telemetryAge(simTime) });
   handleMissionTransition();
+
   simTime += dt;
+
+  while (pendingDownPulses.length && pendingDownPulses[0] <= simTime) {
+    pendingDownPulses.shift();
+    scene?.pulseSignal?.("down", signal.oneWayDelaySec);
+  }
+
+  if (scene?.setCopilotState) {
+    const waitingOnSignal = signal.commandsInFlight(simTime) > 0;
+    const mode = autopilot?.holdReason ? "hold" : waitingOnSignal ? "waiting" : "";
+    scene.setCopilotState({ mode, path: autopilot?.path ?? [], holdReason: autopilot?.holdReason ?? null }, { units: "px" });
+  }
 }
 
 function frame(nowMs) {
@@ -167,10 +191,12 @@ function frame(nowMs) {
   }
   if (scene?.available) {
     scene.updateFromVisibleState(visibleState?.state ?? null);
-    if (typeof scene.setWaypoints === "function") scene.setWaypoints(autopilot?.path ?? []);
+    // Planned waypoints (the uplinked sol plan) and the live autopilot path
+    // are shown separately: the plan doesn't disappear once driving starts.
+    if (typeof scene.setWaypoints === "function") scene.setWaypoints(plannedWaypoints, { units: "px" });
     scene.render();
   }
-  updateHud();
+  updateHudReadout(el, { level: LEVELS[currentLevelKey], terrain, signal, simTime, visibleState });
   rafId = requestAnimationFrame(frame);
 }
 
@@ -197,14 +223,19 @@ function beginRun(scenarioKey) {
   const spawn = terrain.meta.spawn ?? { x: terrain.width / 2, y: terrain.height / 2 };
   trueState = createRover({ x: spawn.x, y: spawn.y, heading: 0 });
   currentControl = { throttle: 0, steer: 0 };
-  lastSentControl = { throttle: 0, steer: 0 };
+  controls?.resetIntent();
   visibleState = null;
   simTime = 0;
   autopilot = null;
+  plannedWaypoints = [];
+  pendingDownPulses = [];
   signal = createSignalLink(delaySec);
   guardrails = { ...DEFAULT_GUARDRAILS };
   mission = startMission(createMission(currentLevelKey), 0);
   lastMissionStatus = mission.status;
+  scene?.setTrueRoverVisible?.(false); // hide the previous run's end-of-mission reveal ghost
+  scene?.setWaypoints?.([], { units: "px" });
+  scene?.setCopilotState?.({ mode: "", path: [], holdReason: null }, { units: "px" });
 
   if (level.mode === "plan") {
     const scenario = resolveScenario(level, scenarioKey);
@@ -214,8 +245,10 @@ function beginRun(scenarioKey) {
       terrain, guardrails, delayLabel: el.marsNote.textContent,
       onUplink: (waypoints, guardrailValues) => {
         guardrails = guardrailValues;
+        plannedWaypoints = waypoints;
         signal.uplink({ type: "plan", waypoints }, simTime);
-        if (typeof scene?.setWaypoints === "function") scene.setWaypoints(waypoints);
+        pulseUplink();
+        if (typeof scene?.setWaypoints === "function") scene.setWaypoints(waypoints, { units: "px" });
         hud.setStatusLine("Plan uplinked. Waiting for the signal to arrive...");
       },
     });
@@ -226,7 +259,7 @@ function beginRun(scenarioKey) {
   }
 }
 
-async function loadLevel(key) {
+async function loadLevel(key, opts = {}) {
   const level = LEVELS[key];
   if (!level) throw new Error(`unknown level "${key}"`);
   currentLevelKey = key;
@@ -237,15 +270,25 @@ async function loadLevel(key) {
 
   terrain = await loadTerrain(level.body);
   el.terrainBanner.hidden = !terrain.synthetic;
+  el.noDataLegend.hidden = !terrain.hasMask;
   el.marsNote.hidden = true;
 
-  scene = createScene(canvas, terrain, { exaggeration: 1.0, albedoUrl: terrain.synthetic ? null : `../assets/${level.body}/albedo.jpg` });
+  scene = createScene(canvas, terrain, {
+    exaggeration: 1.0,
+    albedoUrl: terrain.synthetic ? null : `../assets/${level.body}/albedo.jpg`,
+    body: level.body,
+  });
   el.fallback.hidden = scene.available;
   api.renderer = scene.available ? "webgl" : "none";
   resizeCanvas();
 
   mission = createMission(key);
   lastMissionStatus = mission.status;
+  // The mission brief doubles as a persistent objective/scenario overlay: on
+  // the title screen's single-step Start, the mission begins immediately
+  // (default scenario for Mars) instead of gating on a second click here;
+  // the panel stays up so the player can still read the objective or, on
+  // Mars, restart with a different delay scenario.
   hud.showBrief(level.briefLines, {
     scenarios: level.scenarios,
     onStart: (scenarioKey) => beginRun(scenarioKey),
@@ -258,63 +301,22 @@ async function loadLevel(key) {
 
   api.ready = true;
   rafId = requestAnimationFrame(frame);
-}
 
-// --- Keyboard controls (edge-triggered: a command is sent only when intent changes) ---
-const held = new Set();
-const KEY_MAP = { w: "forward", arrowup: "forward", s: "back", arrowdown: "back", a: "left", arrowleft: "left", d: "right", arrowright: "right" };
-
-function intentFromHeld() {
-  const throttle = (held.has("forward") ? 1 : 0) - (held.has("back") ? 1 : 0);
-  const steer = (held.has("right") ? 1 : 0) - (held.has("left") ? 1 : 0);
-  return { throttle, steer };
-}
-
-function applyIntentChange() {
-  const next = intentFromHeld();
-  if (next.throttle !== lastSentControl.throttle || next.steer !== lastSentControl.steer) {
-    lastSentControl = next;
-    sendCommand(next);
+  if (opts.autoStart) {
+    const defaultScenario = level.scenarios?.length ? level.scenarios[0].key : undefined;
+    beginRun(defaultScenario);
   }
 }
 
-window.addEventListener("keydown", (event) => {
-  const control = KEY_MAP[event.key.toLowerCase()];
-  if (!control) return;
-  held.add(control);
-  applyIntentChange();
-});
-window.addEventListener("keyup", (event) => {
-  const control = KEY_MAP[event.key.toLowerCase()];
-  if (!control) return;
-  held.delete(control);
-  applyIntentChange();
-});
-
-// --- Touch pad ---
-for (const btn of document.querySelectorAll(".pad-btn")) {
-  const control = btn.dataset.control;
-  btn.addEventListener("pointerdown", () => { held.add(control); applyIntentChange(); });
-  const release = () => { held.delete(control); applyIntentChange(); };
-  btn.addEventListener("pointerup", release);
-  btn.addEventListener("pointerleave", release);
-}
-
-// --- Level select ---
-for (const btn of document.querySelectorAll(".level-btn")) {
-  btn.addEventListener("click", () => loadLevel(btn.dataset.level));
-}
-
-// --- Lifecycle: pause the loop when the tab is hidden ---
-window.addEventListener("resize", resizeCanvas);
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden) {
-    cancelAnimationFrame(rafId);
-    rafId = null;
-  } else if (api.ready && rafId == null) {
-    lastFrameMs = null;
-    rafId = requestAnimationFrame(frame);
-  }
+controls = wireControls({
+  sendCommand,
+  loadLevel,
+  resizeCanvas,
+  frame,
+  isReady: () => api.ready,
+  getRafId: () => rafId,
+  setRafId: (id) => { rafId = id; },
+  resetFrameClock: () => { lastFrameMs = null; },
 });
 
 loadLevel("moon").catch((error) => {

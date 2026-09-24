@@ -20,13 +20,32 @@ function sampleToMeters(sample, meta) {
   return meta.minElev + t * (meta.maxElev - meta.minElev);
 }
 
+// Baseline (meters) over which slope is measured for gameplay/physics and
+// the co-pilot's hazard grid. A single real-DEM pixel (e.g. 2.34 m/px on the
+// Moon asset) carries stereo-correlation noise of roughly +-0.5 m; reading
+// slope across ONE pixel lets that noise alias into 40-56 degree "cliffs"
+// that don't exist on the ground, tipping the rover within meters of spawn.
+// Measuring over a rover-scale footprint (a real rover's wheelbase is a few
+// meters) averages the noise out while still catching real terrain slope.
+const SLOPE_BASELINE_M = 3;
+
 /**
  * Build the shared terrain interface over a flat Float32Array of elevations
  * in meters, indexed [y * width + x].
  */
-function buildTerrain({ width, height, metersPerPixel, elevations, synthetic, meta }) {
+function buildTerrain({ width, height, metersPerPixel, elevations, synthetic, meta, mask = null }) {
   function clampIndex(v, max) {
     return Math.max(0, Math.min(max, v));
+  }
+
+  // Uint8 no-data mask (1 = no orbital data, see meta.maskMeaning). Absent
+  // for synthetic terrain and tolerated as absent for real terrain (older
+  // asset bundles, or a fetch that 404s) - noData() then always reads false.
+  function noData(x, y) {
+    if (!mask) return false;
+    const ix = clampIndex(Math.round(x), width - 1);
+    const iy = clampIndex(Math.round(y), height - 1);
+    return mask[iy * width + ix] === 1;
   }
 
   // Bilinear-sampled elevation at fractional pixel coordinates (x, y).
@@ -64,15 +83,69 @@ function buildTerrain({ width, height, metersPerPixel, elevations, synthetic, me
     return { x: nx / len, y: ny / len, z: nz / len };
   }
 
-  // Slope of the surface at (x, y) in degrees, derived from the normal's
-  // tilt away from straight up.
-  function slopeDeg(x, y) {
-    const n = normal(x, y);
-    const dot = Math.max(-1, Math.min(1, n.z));
-    return (Math.acos(dot) * 180) / Math.PI;
+  // Smoothed slope grid, precomputed once per terrain: a box blur over the
+  // raw elevations (radius sized so the blur footprint plus the finite-
+  // difference offset span >= SLOPE_BASELINE_M) removes per-pixel DEM noise,
+  // then slope is the gradient of the BLURRED heights over that same
+  // baseline. Both rover-sim (tip/stall) and the co-pilot's A* hazard grid
+  // read this same precomputed array via slopeDeg(), so they always agree.
+  let slopeGrid = null;
+  function buildSlopeGrid() {
+    const R = Math.max(1, Math.round(SLOPE_BASELINE_M / 2 / metersPerPixel));
+    const blurred = new Float32Array(width * height);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        let sum = 0, count = 0;
+        for (let dy = -R; dy <= R; dy++) {
+          const sy = clampIndex(y + dy, height - 1);
+          for (let dx = -R; dx <= R; dx++) {
+            const sx = clampIndex(x + dx, width - 1);
+            sum += elevations[sy * width + sx];
+            count++;
+          }
+        }
+        blurred[y * width + x] = sum / count;
+      }
+    }
+    const grid = new Float32Array(width * height);
+    for (let y = 0; y < height; y++) {
+      const y0 = clampIndex(y - R, height - 1);
+      const y1 = clampIndex(y + R, height - 1);
+      const spanY = Math.max(1e-6, (y1 - y0) * metersPerPixel);
+      for (let x = 0; x < width; x++) {
+        const x0 = clampIndex(x - R, width - 1);
+        const x1 = clampIndex(x + R, width - 1);
+        const spanX = Math.max(1e-6, (x1 - x0) * metersPerPixel);
+        const dzdx = (blurred[y * width + x1] - blurred[y * width + x0]) / spanX;
+        const dzdy = (blurred[y1 * width + x] - blurred[y0 * width + x]) / spanY;
+        grid[y * width + x] = (Math.atan(Math.hypot(dzdx, dzdy)) * 180) / Math.PI;
+      }
+    }
+    return grid;
   }
 
-  return { width, height, metersPerPixel, synthetic, elev, slopeDeg, normal, meta };
+  // Slope of the surface at (x, y) in degrees, bilinearly sampled from the
+  // precomputed smoothed slope grid (built lazily, once, on first use).
+  function slopeDeg(x, y) {
+    if (!slopeGrid) slopeGrid = buildSlopeGrid();
+    const fx = clampIndex(x, width - 1);
+    const fy = clampIndex(y, height - 1);
+    const x0 = Math.floor(fx);
+    const y0 = Math.floor(fy);
+    const x1 = Math.min(x0 + 1, width - 1);
+    const y1 = Math.min(y0 + 1, height - 1);
+    const tx = fx - x0;
+    const ty = fy - y0;
+    const s00 = slopeGrid[y0 * width + x0];
+    const s10 = slopeGrid[y0 * width + x1];
+    const s01 = slopeGrid[y1 * width + x0];
+    const s11 = slopeGrid[y1 * width + x1];
+    const top = s00 + (s10 - s00) * tx;
+    const bottom = s01 + (s11 - s01) * tx;
+    return top + (bottom - top) * ty;
+  }
+
+  return { width, height, metersPerPixel, synthetic, elev, slopeDeg, normal, noData, hasMask: !!mask, meta };
 }
 
 /**
@@ -153,10 +226,11 @@ export function createSyntheticTerrain({ width = 256, height = 256, metersPerPix
 }
 
 /**
- * Parse a fetched height.bin (Uint16 LE) + meta.json into the shared
- * terrain interface. Pure: takes already-loaded bytes/JSON, does no I/O.
+ * Parse a fetched height.bin (Uint16 LE) + meta.json (+ optional mask.bin,
+ * Uint8) into the shared terrain interface. Pure: takes already-loaded
+ * bytes/JSON, does no I/O.
  */
-export function parseTerrain(heightBinBuffer, meta) {
+export function parseTerrain(heightBinBuffer, meta, maskBinBuffer = null) {
   const { width, height } = meta;
   const view = new DataView(heightBinBuffer);
   const elevations = new Float32Array(width * height);
@@ -164,7 +238,11 @@ export function parseTerrain(heightBinBuffer, meta) {
     const sample = view.getUint16(i * 2, true); // little-endian
     elevations[i] = sampleToMeters(sample, meta);
   }
-  return buildTerrain({ width, height, metersPerPixel: meta.metersPerPixel, elevations, synthetic: false, meta });
+  let mask = null;
+  if (maskBinBuffer && maskBinBuffer.byteLength >= width * height) {
+    mask = new Uint8Array(maskBinBuffer);
+  }
+  return buildTerrain({ width, height, metersPerPixel: meta.metersPerPixel, elevations, synthetic: false, meta, mask });
 }
 
 /**
@@ -190,7 +268,18 @@ export async function loadTerrain(body) {
     if (heightBuffer.byteLength < meta.width * meta.height * 2) {
       throw new Error(`height.bin too small for ${body} (${heightBuffer.byteLength} bytes)`);
     }
-    return parseTerrain(heightBuffer, meta);
+    // mask.bin is optional: tolerate a missing file (older asset bundle, or
+    // a body with no no-data cells) without failing the whole terrain load.
+    let maskBuffer = null;
+    if (meta.maskFile) {
+      try {
+        const maskRes = await fetch(`${base}${meta.maskFile}`);
+        if (maskRes.ok) maskBuffer = await maskRes.arrayBuffer();
+      } catch {
+        // no-op: mask stays null, noData() reports everything passable.
+      }
+    }
+    return parseTerrain(heightBuffer, meta, maskBuffer);
   } catch (error) {
     console.warn(`[terrain] real DEM for "${body}" unavailable (${error.message}); using synthetic test terrain.`);
     return createSyntheticTerrain({ seed: body === "mars" ? 2 : 1 });

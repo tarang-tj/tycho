@@ -11,8 +11,8 @@
     "y": 512
   },
   "goal": {
-    "x": 445,
-    "y": 429
+    "x": 455,
+    "y": 441
   },
   "source": {
     "product": "M20_JezeroCrater_CTXDEM_20m",
@@ -27,7 +27,7 @@
   "license": "NASA data policy: data from a NASA-led mission is licensed as Creative Commons Zero (CC0); public domain, no usage restrictions.",
   "credit": "NASA/JPL-Caltech/MSSS/USGS",
   "nodataFilledFraction": 0.0,
-  "notes": "Shaded rendering of real CTX DEM elevation (not a photo). Crop is a native-resolution (20 m/px) 1024x1024 window centered on the Octavia E. Butler landing pixel, computed from the GeoTIFF's spherical-Equirectangular georeferencing (verified against the source's documented 17.58-19.29N/76.99-78.58E extent). Goal is the highest local terrain-roughness point 2-4km from spawn, a data-driven proxy for the delta scarp -- not a surveyed named feature; confirm visually against preview.png. mask.bin marks nodata-filled cells (rendered as a hatched no-data texture in albedo.jpg/preview.png); spawn and goal are kept >= 20px clear of them.",
+  "notes": "Shaded rendering of real CTX DEM elevation (not a photo). Crop is a native-resolution (20 m/px) 1024x1024 window centered on the Octavia E. Butler landing pixel, computed from the GeoTIFF's spherical-Equirectangular georeferencing (verified against the source's documented 17.58-19.29N/76.99-78.58E extent). Goal is the highest local terrain-roughness point 2-4km from spawn, a data-driven proxy for the delta scarp -- not a surveyed named feature; confirm visually against preview.png. mask.bin marks nodata-filled cells (rendered as a hatched no-data texture in albedo.jpg/preview.png); spawn and goal are kept >= 20px clear of them. PATCHED by tools/patch_playability_sites.py: goal relocated from (445,429) to (455,441), 1813m from spawn along the same bearing: the original delta-front pixel sits next to a locally steep (>25deg) patch of the scarp edge that a straight sol-plan leg clips from most approach angles. (455,441) is still at the delta's base (elev -2481.9m vs original -2498.2m) and is locally clear (no neighbor within 80m exceeds 20deg), so a 2-4 waypoint sol plan reaches it under default guardrails.",
   "maskFile": "mask.bin",
   "maskMeaning": "1 = no orbital data (filled), treat as impassable"
 }

@@ -115,14 +115,23 @@ export function createScene(canvas, terrain, opts = {}) {
   fillTex.magFilter = fillTex.minFilter = THREE.LinearFilter;
   fillTex.needsUpdate = true;
   U.uFillMask.value = fillTex;
-  // The data lane ships an exact no-data mask; fold it into the hillshade
-  // suppression (the albedo hatches those cells) when it is available.
+  // The real no-data mask (from the data pipeline, assets/<body>/mask.bin)
+  // is a SEPARATE signal from the render-only "fill" heuristic above: fill
+  // suppresses hillshade to avoid stripe artifacts on re-filled DEM edges
+  // (terrain that IS real data, just smoothed at the seam); the real mask
+  // instead marks terrain that was NEVER measured at all, and must always
+  // read as visibly "no orbital data" - see FRAG_ALBEDO in shading.js.
+  const realMaskData = new Uint8Array(fillData.length);
+  const realMaskTex = new THREE.DataTexture(realMaskData, field.W, field.H, THREE.RedFormat, THREE.UnsignedByteType);
+  realMaskTex.magFilter = realMaskTex.minFilter = THREE.LinearFilter;
+  realMaskTex.needsUpdate = true;
+  U.uRealMask.value = realMaskTex;
   if (albedoUrl && terrain.meta?.maskFile) {
     fetch(albedoUrl.replace(/[^/]+$/, terrain.meta.maskFile)).then((r) => (r.ok ? r.arrayBuffer() : null)).then((buf) => {
-      if (!buf || buf.byteLength < fillData.length) return;
+      if (!buf || buf.byteLength < realMaskData.length) return;
       const m = new Uint8Array(buf);
-      for (let i = 0; i < fillData.length; i++) if (m[i]) fillData[i] = 255;
-      fillTex.needsUpdate = true;
+      for (let i = 0; i < realMaskData.length; i++) if (m[i]) realMaskData[i] = 255;
+      realMaskTex.needsUpdate = true;
     }).catch(() => { /* optional asset */ });
   }
   const sunMask = bakeSunMask(renderer, field, sky.sunDir, look.spread);
@@ -203,7 +212,7 @@ export function createScene(canvas, terrain, opts = {}) {
   if (goalPx) overlays.setGoal(goalPx.x * mpp, goalPx.y * mpp);
 
   const camera = new THREE.PerspectiveCamera(50, canvas.clientWidth / Math.max(1, canvas.clientHeight), 0.08, 160000);
-  const camRig = createCameraRig(camera, canvas, { groundAt: near.groundAt, openingDir: body === "moon" ? sky.earthDir : sky.sunDir });
+  const camRig = createCameraRig(camera, canvas, { groundAt: near.groundAt, openingDir: body === "moon" ? sky.earthDir : sky.sunDir, body });
 
   let visible = null;
   let trueState = null;
@@ -308,9 +317,12 @@ export function createScene(canvas, terrain, opts = {}) {
   }
 
   function setCameraView(name) {
+    // Mars's coarser 20 m/px terrain reads emptier at the same distance, so
+    // its chase/closeup views sit closer and lower to keep the rover large.
+    const isMars = body === "mars";
     const views = {
-      chase: { yawOff: 0, pitch: 0.13, dist: 5.8 },
-      closeup: { yawOff: 2.4, pitch: 0.12, dist: 2.9 },
+      chase: { yawOff: 0, pitch: isMars ? 0.1 : 0.13, dist: isMars ? 4.4 : 5.8 },
+      closeup: { yawOff: 2.4, pitch: 0.1, dist: isMars ? 2.3 : 2.9 },
       wide: { yawOff: 0.6, pitch: 0.42, dist: 38 },
       peak: { yawOff: 0, pitch: 0.06, dist: 6.5 },
     };
