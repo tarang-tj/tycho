@@ -1,0 +1,50 @@
+{
+  "width": 1024,
+  "height": 1024,
+  "metersPerPixel": 4.9999999999999,
+  "minElev": -2820.980224609375,
+  "maxElev": -2349.42529296875,
+  "heightScale": 471.554931640625,
+  "sizeKm": 5.12,
+  "spawn": {
+    "x": 524,
+    "y": 924
+  },
+  "goal": {
+    "x": 512,
+    "y": 512
+  },
+  "source": {
+    "product": "NAC_DTM_LUNOKHOD2",
+    "url": "https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_DTM_LUNOKHOD2",
+    "download": "http://lroc.sese.asu.edu/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/SDP/NAC_DTM/LUNOKHOD2/NAC_DTM_LUNOKHOD2.TIF",
+    "factsSource": "LROC post 699 \"Lunokhod 2 Revisited\", https://lroc.im-ldi.com/posts/699"
+  },
+  "license": "LROC Reduced Data Record (RDR) products available through the NASA Planetary Data System (PDS) are in the public domain.",
+  "credit": "NASA/GSFC/Arizona State University",
+  "nodataFilledFraction": 0.00076,
+  "notes": "Shaded rendering of real LRO NAC DTM elevation (not a photo). Crop is a 5.12km square at native 5 m/px, centered on the pixel of Lunokhod 2's parked position (a surveyed coordinate from LROC post 699, not a proxy). Goal is the parked rover (\"Lunokhod 2 (parked since 1973)\"); spawn is the lowest-slope point 1.5-3km south of it, chosen along the rover's real recorded approach direction (post 699: \"Rover tracks extend north to the final parking place\", i.e. the historic drive came from the south). Luna 21's landing site (26.005N, 30.406E) is ~39km away (the real driving distance Lunokhod 2 covered) and falls outside this crop; its pixel in the full raster has DTM elevation -2687.9m vs LROC post 699's cited -2769m. mask.bin marks nodata-filled cells (rendered as a hatched no-data texture in albedo.jpg/preview.png); spawn and goal are kept >= 20px clear of them. The rover model in-engine is an illustrative period-accurate silhouette, not a survey model.",
+  "maskFile": "mask.bin",
+  "maskMeaning": "1 = no orbital data (filled), treat as impassable",
+  "siteName": "Le Monnier crater, Lunokhod 2 site",
+  "goalLabel": "Lunokhod 2 (parked since 1973)",
+  "goalLatLon": {
+    "lat": 25.83,
+    "lon": 30.914
+  },
+  "spawnLatLon": {
+    "lat": 25.76199,
+    "lon": 30.91626
+  },
+  "lunokhod2Heading": "southeast",
+  "lunokhod2Lid": "open",
+  "luna21LatLon": {
+    "lat": 26.005,
+    "lon": 30.406
+  },
+  "luna21Pixel": null,
+  "luna21ElevM": -2687.9,
+  "spawnGoalDistanceM": 2060.9,
+  "lineSlopeDegMax": 14.61,
+  "lineSlopeDegMean": 3.7
+}

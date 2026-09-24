@@ -16,7 +16,8 @@ from georef import EquirectParams
 from meta_schema import build_meta, validate_meta
 from raster_ops import (area_resample, compute_mask_1024, denormalize_from_uint16, fill_nodata, nodata_mask,
                          normalize_to_uint16)
-from site_picker import ensure_clear_of_mask, find_best_square_crop, find_peak, pick_mars_goal, pick_moon_spawn
+from site_picker import (ensure_clear_of_mask, find_best_square_crop, find_peak, pick_directional_point,
+                          pick_mars_goal, pick_moon_spawn)
 
 
 class TestNormalization(unittest.TestCase):
@@ -187,6 +188,93 @@ class TestSitePicker(unittest.TestCase):
         point, changed = ensure_clear_of_mask((5, 5), elev, mask, min_px=20, mode="max_elev")
         self.assertFalse(changed)
         self.assertEqual(point, (5, 5))
+
+
+class TestEquirectGeorefLunokhod(unittest.TestCase):
+    """Synthetic georef matching the real NAC_DTM_LUNOKHOD2 header structure
+    (spherical Equirectangular, CenterLong=180 rather than 0 -- a different
+    GeoKey combination than the Mars/Moon-Tycho fixtures above, so this
+    exercises the lon0 != 0 branch of the same formulas). Verified this
+    session against the real file's GeoTIFF tags and the product page's
+    documented extent (24.86-26.68N, 30.32-31.09E)."""
+
+    def setUp(self):
+        header = {
+            "tiepoint": (0.0, 0.0, 0.0, -4079544.9999999, 809114.99999998, 0.0),
+            "pixel_scale": (4.9999999999999, 4.9999999999999, 0.0),
+            "geokeys": {3088: 180.0, 3089: 0.0, 3078: 26.0, 2057: 1737400.0},
+        }
+        self.geo = EquirectParams.from_header(header)
+        self.width, self.height = 4232, 11050
+
+    def test_corners_match_real_product_page_extent(self):
+        lat_tl, lon_tl = self.geo.pixel_to_latlon(0, 0)
+        lat_br, lon_br = self.geo.pixel_to_latlon(self.width - 1, self.height - 1)
+        self.assertAlmostEqual(lat_tl, 26.6829, places=3)
+        self.assertAlmostEqual(lon_tl, 30.3164, places=3)
+        self.assertAlmostEqual(lat_br, 24.8610, places=3)
+        self.assertAlmostEqual(lon_br, 31.0926, places=3)
+
+    def test_lunokhod2_parked_pixel_in_bounds(self):
+        # 25.830N, 30.914E -- LROC post 699's parked-rover coordinate.
+        i, j = self.geo.latlon_to_pixel(25.830, 30.914)
+        self.assertTrue(0 <= i < self.width)
+        self.assertTrue(0 <= j < self.height)
+        self.assertAlmostEqual(i, 3257.7, delta=1.0)
+        self.assertAlmostEqual(j, 5172.6, delta=1.0)
+
+    def test_round_trip(self):
+        for lat, lon in [(25.830, 30.914), (26.005, 30.406), (25.0, 30.5)]:
+            i, j = self.geo.latlon_to_pixel(lat, lon)
+            lat2, lon2 = self.geo.pixel_to_latlon(i, j)
+            self.assertAlmostEqual(lat, lat2, places=6)
+            self.assertAlmostEqual(lon, lon2, places=6)
+
+
+class TestPickDirectionalPoint(unittest.TestCase):
+    def test_prefers_flat_cell_within_sector(self):
+        elev = np.zeros((200, 200), dtype=np.float32)
+        # A ramp makes every cell's slope distinct so argmin has one answer.
+        # South of center is gentle (small per-row rise); west is much steeper.
+        elev += np.arange(200, dtype=np.float32)[:, None] * 0.01
+        elev[80:120, 60:80] += np.arange(20, dtype=np.float32) * 20.0  # steep patch west of center
+        center = (100, 100)
+        row, col = pick_directional_point(
+            elev, center, cellsize_m=1.0, r_min_m=20, r_max_m=40,
+            bearing_deg=180.0, bearing_width_deg=60.0)
+        # picked point must be within the south sector: row > center row
+        self.assertGreater(row, center[0])
+        dist = ((row - center[0]) ** 2 + (col - center[1]) ** 2) ** 0.5
+        self.assertTrue(20 <= dist <= 40 + 1e-6)
+
+    def test_respects_distance_annulus(self):
+        elev = np.zeros((300, 300), dtype=np.float32)
+        center = (150, 150)
+        row, col = pick_directional_point(
+            elev, center, cellsize_m=1.0, r_min_m=50, r_max_m=100,
+            bearing_deg=180.0, bearing_width_deg=90.0)
+        dist = ((row - center[0]) ** 2 + (col - center[1]) ** 2) ** 0.5
+        self.assertTrue(50 <= dist <= 100 + 1e-6)
+        self.assertGreaterEqual(row, center[0])  # south half
+
+    def test_excludes_nodata_and_edge_margin(self):
+        elev = np.zeros((300, 300), dtype=np.float32)
+        mask = np.zeros((300, 300), dtype=bool)
+        mask[150:220, 130:170] = True  # blocks the nearest south cells
+        row, col = pick_directional_point(
+            elev, (150, 150), cellsize_m=1.0, r_min_m=10, r_max_m=290,
+            bearing_deg=180.0, bearing_width_deg=90.0, nodata_mask=mask, edge_margin_px=10)
+        self.assertFalse(mask[row, col])
+        self.assertTrue(10 <= row < 290 and 10 <= col < 290)
+
+    def test_falls_back_to_full_annulus_when_sector_empty(self):
+        elev = np.zeros((50, 50), dtype=np.float32)
+        mask = np.zeros((50, 50), dtype=bool)
+        mask[:, 25:] = True  # blocks the entire east half, including any south-sector cell east of center
+        row, col = pick_directional_point(
+            elev, (25, 10), cellsize_m=1.0, r_min_m=5, r_max_m=15,
+            bearing_deg=90.0, bearing_width_deg=20.0, nodata_mask=mask)  # sector points east, all masked
+        self.assertFalse(mask[row, col])  # fell back to the (unmasked) full annulus
 
 
 class TestComputeMask1024(unittest.TestCase):

@@ -4,7 +4,10 @@ Moon: spawn is a drivable spot (local slope < 15 deg) near the peak's base;
 goal is the summit. Mars: spawn is the landing-site pixel; goal is a nearby
 (2-4 km) point of high terrain roughness, a data-driven proxy for the delta
 scarp visible in the DEM (not a surveyed named-feature coordinate -- flagged
-as approximate in meta.notes by the caller).
+as approximate in meta.notes by the caller). Lunokhod: goal is the parked
+rover's pixel (a surveyed coordinate, not a proxy); spawn is the lowest-slope
+point 1.5-3km away along a sourced compass bearing (see
+pick_directional_point).
 """
 from __future__ import annotations
 
@@ -140,6 +143,44 @@ def pick_moon_spawn(elev: np.ndarray, peak_rc: tuple[int, int], cellsize_m: floa
     candidate_slope = np.where(ring, slope, np.inf)
     ok = ring & (slope < max_slope_deg)
     pool = candidate_slope if not ok.any() else np.where(ok, slope, np.inf)
+    idx = int(np.argmin(pool))
+    row, col = np.unravel_index(idx, elev.shape)
+    return int(row), int(col)
+
+
+def pick_directional_point(elev: np.ndarray, center_rc: tuple[int, int], cellsize_m: float,
+                            r_min_m: float, r_max_m: float, bearing_deg: float, bearing_width_deg: float,
+                            nodata_mask: np.ndarray | None = None, edge_margin_px: int = 0
+                            ) -> tuple[int, int]:
+    """Finds the lowest-slope point within [r_min_m, r_max_m] of center_rc,
+    restricted to a compass sector (bearing_deg +/- bearing_width_deg/2;
+    0=north/-row, 90=east/+col, 180=south/+row, 270=west/-col). Used to place
+    a spawn along a real, sourced direction (e.g. Lunokhod 2's recorded
+    approach track) rather than an arbitrary angle. edge_margin_px excludes
+    points too close to the crop border so slope/mask sampling near the
+    chosen point stays well-conditioned. Falls back to the full annulus
+    (any bearing) if nothing qualifies in the sector, matching the
+    fallback pattern used by pick_moon_spawn/pick_mars_goal."""
+    slope = slope_deg(elev, cellsize_m)
+    rows, cols = np.indices(elev.shape)
+    dr = rows - center_rc[0]
+    dc = cols - center_rc[1]
+    dist = np.sqrt(dr ** 2 + dc ** 2)
+    bearing = np.degrees(np.arctan2(dc, -dr)) % 360
+    ang_diff = np.abs(((bearing - bearing_deg + 180) % 360) - 180)
+    ring = (dist >= r_min_m / cellsize_m) & (dist <= r_max_m / cellsize_m)
+    if edge_margin_px:
+        h, w = elev.shape
+        ring = ring & (rows >= edge_margin_px) & (rows < h - edge_margin_px) \
+            & (cols >= edge_margin_px) & (cols < w - edge_margin_px)
+    if nodata_mask is not None:
+        ring = ring & ~nodata_mask
+    sector = ring & (ang_diff <= bearing_width_deg / 2.0)
+    if not sector.any():
+        sector = ring
+    if not sector.any():
+        raise ValueError("directional annulus is empty; center too close to grid edge or all masked")
+    pool = np.where(sector, slope, np.inf)
     idx = int(np.argmin(pool))
     row, col = np.unravel_index(idx, elev.shape)
     return int(row), int(col)
