@@ -1,0 +1,36 @@
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: #06070a; color: #e7e4dc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+body { display: flex; flex-direction: column; }
+
+.topbar { display: flex; align-items: center; justify-content: space-between; padding: 0.6rem 1rem; background: #0b0d12; border-bottom: 1px solid #1c1f28; }
+.identity strong { font-size: 1.1rem; letter-spacing: 0.06em; }
+.identity small { display: block; color: #8b93a3; font-size: 0.75rem; }
+
+.level-select { display: flex; gap: 0.5rem; }
+.level-btn { background: #14171f; color: #cfd3dc; border: 1px solid #262b38; border-radius: 6px; padding: 0.4rem 0.8rem; cursor: pointer; font-size: 0.85rem; }
+.level-btn[aria-pressed="true"] { background: #2a6fdb; border-color: #4fa8ff; color: #fff; }
+
+main { flex: 1; display: flex; min-height: 0; }
+
+.scene-shell { position: relative; flex: 1; min-width: 0; }
+#sceneCanvas { width: 100%; height: 100%; display: block; background: #000; }
+.scene-fallback { position: absolute; top: 1rem; left: 1rem; color: #f4c06a; }
+.terrain-banner { position: absolute; top: 0.6rem; left: 50%; transform: translateX(-50%); background: rgba(244, 192, 106, 0.15); border: 1px solid #f4c06a; color: #f4c06a; padding: 0.25rem 0.75rem; border-radius: 4px; font-size: 0.75rem; letter-spacing: 0.05em; }
+.mars-delay-note { position: absolute; bottom: 0.6rem; left: 50%; transform: translateX(-50%); background: rgba(79, 168, 255, 0.12); border: 1px solid #4fa8ff; color: #bcdcff; padding: 0.3rem 0.9rem; border-radius: 4px; font-size: 0.75rem; text-align: center; max-width: 90%; }
+
+.hud { width: 300px; flex-shrink: 0; background: #0b0d12; border-left: 1px solid #1c1f28; padding: 1rem; overflow-y: auto; }
+.hud-row { display: grid; grid-template-columns: auto 1fr; gap: 0.2rem 0.6rem; margin: 0 0 1rem; }
+.hud-row dt { color: #8b93a3; font-size: 0.75rem; }
+.hud-row dd { margin: 0 0 0.4rem; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+
+.touchpad { display: grid; justify-items: center; gap: 0.3rem; margin: 1rem 0; }
+.pad-mid { display: flex; gap: 2.4rem; }
+.pad-btn { width: 3rem; height: 3rem; background: #14171f; border: 1px solid #262b38; border-radius: 8px; color: #cfd3dc; font-size: 1.2rem; cursor: pointer; touch-action: manipulation; }
+.pad-btn:active { background: #2a6fdb; }
+
+.controls-help { color: #8b93a3; font-size: 0.75rem; line-height: 1.4; }
+
+@media (max-width: 720px) {
+  main { flex-direction: column; }
+  .hud { width: auto; border-left: none; border-top: 1px solid #1c1f28; }
+}

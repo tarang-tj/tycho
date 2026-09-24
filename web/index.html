@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="TYCHO: drive a rover over real Moon and Mars terrain with the real signal delay. Independent portfolio project.">
+  <meta name="theme-color" content="#06070a">
+  <title>TYCHO — drive the delay</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="identity">
+      <strong>TYCHO</strong>
+      <small>Drive the delay</small>
+    </div>
+    <div class="level-select" role="group" aria-label="Level select">
+      <button type="button" data-level="moon" class="level-btn" aria-pressed="true">Moon — Lunokhod</button>
+      <button type="button" data-level="mars" class="level-btn" aria-pressed="false">Mars — Jezero</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="scene-shell">
+      <canvas id="sceneCanvas" tabindex="0" aria-label="TYCHO 3D scene"></canvas>
+      <p id="sceneFallback" class="scene-fallback" hidden>WebGL is unavailable in this browser. TYCHO needs a WebGL-capable browser to run.</p>
+      <p id="terrainBanner" class="terrain-banner" hidden>SYNTHETIC TEST TERRAIN — real DEM assets not loaded</p>
+      <p id="marsDelayNote" class="mars-delay-note" hidden>Mars delay compressed for play; real one-way delay: 3 to 22 minutes.</p>
+    </div>
+
+    <div class="hud" aria-label="Telemetry and controls">
+      <dl class="hud-row">
+        <dt>Body</dt><dd id="hudBody">—</dd>
+        <dt>One-way delay</dt><dd id="hudDelay">—</dd>
+        <dt>Signal in flight</dt><dd id="hudInFlight">—</dd>
+        <dt>Seeing telemetry from</dt><dd id="hudTelemetryAge">—</dd>
+        <dt>Speed</dt><dd id="hudSpeed">—</dd>
+        <dt>Slope under rover</dt><dd id="hudSlope">—</dd>
+        <dt>Distance to goal</dt><dd id="hudGoalDist">—</dd>
+      </dl>
+      <div class="touchpad" aria-label="Touch drive controls">
+        <button type="button" data-control="forward" class="pad-btn pad-up">▲</button>
+        <div class="pad-mid">
+          <button type="button" data-control="left" class="pad-btn">◀</button>
+          <button type="button" data-control="right" class="pad-btn">▶</button>
+        </div>
+        <button type="button" data-control="back" class="pad-btn pad-down">▼</button>
+      </div>
+      <p class="controls-help">Keyboard: WASD or arrow keys. Everything you see is delayed telemetry from the past.</p>
+    </div>
+  </main>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>
