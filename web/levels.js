@@ -12,9 +12,13 @@ export const MARS_SCENARIOS = [
 ];
 
 export const LEVELS = {
-  moon: { body: "moon", label: "Moon", mode: "live", delaySec: 1.28, briefLines: BRIEFS.moon },
+  lunokhod: { body: "lunokhod", label: "Lunokhod", mode: "live", delaySec: 1.28, briefLines: BRIEFS.lunokhod },
+  tycho: { body: "moon", label: "Tycho", mode: "live", delaySec: 1.28, briefLines: BRIEFS.tycho },
   mars: { body: "mars", label: "Mars", mode: "plan", briefLines: BRIEFS.mars, scenarios: MARS_SCENARIOS },
 };
+
+// Level keys in the order they cycle (title screen arrow keys, etc).
+export const LEVEL_ORDER = ["lunokhod", "tycho", "mars"];
 
 /** Resolve a Mars scenario by key, defaulting to "typical" if unknown/omitted. */
 export function resolveScenario(level, scenarioKey) {

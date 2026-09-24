@@ -56,7 +56,7 @@ function downsample(path, n) {
 
 // --- A* reachability: both bodies must have a real spawn->goal route -----
 
-for (const body of ["moon", "mars"]) {
+for (const body of ["moon", "mars", "lunokhod"]) {
   test(`${body}: A* finds a spawn->goal path under the default slope guardrail`, () => {
     const terrain = loadRealTerrain(body);
     const { spawn, goal } = terrain.meta;
@@ -134,6 +134,83 @@ test("moon: a delayed-telemetry bot reaches the goal from spawn without tipping 
   assert.equal(mission.status, "won", `moon bot failed to reach the goal within ${BUDGET_S}s (sim); mission ended "${mission.status}" (${whatHappenedLine(mission)}); final true position (${trueState.x.toFixed(1)},${trueState.y.toFixed(1)})`);
   assert.equal(mission.outcome, "arrived");
   console.log(`  [moon bot] arrived in ${simTime.toFixed(1)}s sim time, max slope encountered ${maxSlopeEncountered.toFixed(1)}deg, path points ${path.length}`);
+});
+
+// --- Lunokhod: live delayed-telemetry bot, same shape as the Moon/Tycho bot ---
+// (U1: the flagship level - drive to where Lunokhod 2 has been parked since 1973)
+
+// Le Monnier's crater-field microterrain (small scattered craters near the
+// spawn->goal line, see plans/260923-2234-tycho-rover/reports/lunokhod-data.md)
+// makes the raw 1px-step A* route noticeably more jagged than Tycho's single
+// clean climb: following it one waypoint at a time (WAYPOINT_ARRIVE_RADIUS_M)
+// forces a full course-correction at every zigzag and never lets the rover
+// build speed. A pure-pursuit lookahead (steer at the farthest path point
+// within PURSUIT_LOOKAHEAD_M of the current position, not just the next
+// point) smooths that out - the same thing a real driver does on a winding
+// road - while the underlying route still never leaves the margin-dilated
+// safety corridor computed above. Verified: without this, the bot crawls
+// (heading oscillates every waypoint, effective speed ~0.25 m/s) and never
+// reaches the goal within a generous budget; with it, ~1680s sim time.
+const PURSUIT_LOOKAHEAD_M = 20;
+function pursuitTarget(path, fromIdx, pos, mpp) {
+  let idx = fromIdx;
+  while (idx < path.length - 1 && Math.hypot(path[idx].x - pos.x, path[idx].y - pos.y) * mpp < WAYPOINT_ARRIVE_RADIUS_M) idx++;
+  let target = path[idx];
+  let j = idx;
+  while (j < path.length - 1 && Math.hypot(path[j].x - pos.x, path[j].y - pos.y) * mpp < PURSUIT_LOOKAHEAD_M) { j++; target = path[j]; }
+  return { idx, target };
+}
+
+test("lunokhod: a delayed-telemetry bot reaches the parked Lunokhod 2 from spawn without tipping or driving onto no-data terrain", () => {
+  const terrain = loadRealTerrain("lunokhod");
+  const { spawn, goal } = terrain.meta;
+  const delaySec = terrain.meta.delayOneWaySec ?? 1.28;
+  assert.ok(delaySec > 0, "lunokhod delay must be the real, positive one-way light-time delay");
+
+  const PLANNING_MARGIN_DEG = 30;
+  const { path } = findGlobalPath(terrain, spawn, goal, PLANNING_MARGIN_DEG, 1, 500000, 1);
+  assert.ok(path, "precondition: a safe, dilated (margin-buffered) route must exist");
+
+  const signal = createSignalLink(delaySec);
+  let trueState = createRover({ x: spawn.x, y: spawn.y, heading: 0 });
+  let currentControl = { throttle: 0, steer: 0 };
+  let waypointIndex = 0;
+  let lastCommandAt = -Infinity;
+  const CONTROL_INTERVAL_S = 0.1;
+  const dt = 1 / 20;
+  const BUDGET_S = 3000;
+  let maxSlopeEncountered = 0;
+  let simTime = 0;
+
+  let mission = startMission(createMission("lunokhod"), 0);
+  let visibleState = null;
+
+  for (; simTime < BUDGET_S && mission.status === "active"; simTime += dt) {
+    for (const cmd of signal.pullDeliveredCommands(simTime)) currentControl = cmd;
+
+    trueState = stepRover(trueState, currentControl, terrain, dt);
+    assert.equal(trueState.tipped, false, `lunokhod bot tipped at simTime=${simTime.toFixed(2)}s, slope=${trueState.slopeDeg?.toFixed(1)}deg`);
+    assert.equal(trueState.stopped, false, `lunokhod bot stopped (${trueState.stopReason}) at simTime=${simTime.toFixed(2)}s`);
+    maxSlopeEncountered = Math.max(maxSlopeEncountered, trueState.slopeDeg);
+
+    signal.telemetry({ ...trueState, copilotHold: null, planActive: true }, simTime);
+    const visible = signal.visibleTelemetry(simTime);
+    if (visible) visibleState = visible;
+
+    mission = updateMission(mission, { visibleTelemetry: visibleState, simTime, terrain, telemetryAgeSec: signal.telemetryAge(simTime) });
+
+    if (visibleState && simTime - lastCommandAt >= CONTROL_INTERVAL_S) {
+      lastCommandAt = simTime;
+      const { idx, target } = pursuitTarget(path, waypointIndex, visibleState.state, terrain.metersPerPixel);
+      waypointIndex = idx;
+      const control = steerTowardPoint(visibleState.state, target);
+      signal.uplink(control, simTime);
+    }
+  }
+
+  assert.equal(mission.status, "won", `lunokhod bot failed to reach Lunokhod 2 within ${BUDGET_S}s (sim); mission ended "${mission.status}" (${whatHappenedLine(mission)}); final true position (${trueState.x.toFixed(1)},${trueState.y.toFixed(1)})`);
+  assert.equal(mission.outcome, "arrived");
+  console.log(`  [lunokhod bot] arrived in ${simTime.toFixed(1)}s sim time, max slope encountered ${maxSlopeEncountered.toFixed(1)}deg, path points ${path.length}`);
 });
 
 // --- Mars: uplinked sol plan driven by the co-pilot, ALL 3 scenarios, real defaults ---

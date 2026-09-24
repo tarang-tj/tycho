@@ -21,11 +21,13 @@ On the Moon, a human can steer a rover live. Radio takes about 1.28 seconds to g
 
 On Mars you can't. The signal takes minutes each way, so by the time you see a cliff edge on your screen, the rover reached it long ago. That's why Mars rovers get a plan for the day and drive themselves between commands.
 
-TYCHO lets you feel that difference with your own hands. Level 1 is live driving with a short lag. Level 2 is planning, handing over control, and trusting the co-pilot. Everything you see on screen is telemetry from the past, and when the run ends the game shows you where the rover really was.
+TYCHO lets you feel that difference with your own hands. Two levels are live driving with a short lag, on two different real Moon sites. The third is planning, handing over control, and trusting the co-pilot, on Mars. Everything you see on screen is telemetry from the past, and when the run ends the game shows you where the rover really was.
 
 ## How to play
 
-**Level 1: Lunokhod (Moon, Tycho central peak).** Drive the last 200 m up to the high-point marker near the top of Tycho's central peak.
+**Level 1: Lunokhod (Moon, Le Monnier crater).** Drive to where the real Lunokhod 2 rover has been parked since 1973, at 25.830 N, 30.914 E.
+
+**Level 2: Tycho (Moon, Tycho central peak).** Drive the last stretch up to the high-point marker near the top of Tycho's central peak.
 
 | Input | Action |
 |---|---|
@@ -33,9 +35,9 @@ TYCHO lets you feel that difference with your own hands. Level 1 is live driving
 | On-screen pad | Same, on touch screens |
 | Drag / scroll / pinch | Look around and zoom |
 
-Every change in your input is sent to the rover and lands 1.28 s later. The picture you steer by is 1.28 s old. Too steep a slope and TYCHO tips.
+Every change in your input is sent to the rover and lands 1.28 s later. The picture you steer by is 1.28 s old. Too steep a slope and TYCHO tips. Reaching Lunokhod 2 doesn't end the mission in fiction: the game shows a short, sourced line ("You reached Lunokhod 2. It has been parked here since 1973.") and nothing more.
 
-**Level 2: Jezero (Mars, near the Perseverance landing site).** Reach the goal marker near the base of the delta.
+**Level 3: Jezero (Mars, near the Perseverance landing site).** Reach the goal marker near the base of the delta.
 
 1. Pick a delay scenario (close approach, typical, or near conjunction). The real one-way delay is always shown next to the compression factor used for play.
 2. Click the minimap to place up to 5 waypoints, or use the keyboard: arrow keys move a cursor, `Enter` places a waypoint, `Backspace` removes the last one, `U` uplinks. A click near the goal snaps onto it. That's your sol plan.
@@ -44,16 +46,20 @@ Every change in your input is sent to the rover and lands 1.28 s later. The pict
 
 The goal is about 1.8 km out. The default autonomous distance cap (3 km) covers it, so a first plan can win on the defaults at every delay setting. Lower the cap to see the co-pilot hold.
 
-After each run a scoreboard compares success with and without the co-pilot. With fewer than 5 runs it says so: `too few runs to trust this rate`.
+After each run a scoreboard compares success with and without the co-pilot. With fewer than 5 runs it says so: `too few runs to trust this rate`. Switching levels or retrying mid-run records that run as **abandoned** and excludes it from every success rate, so walking away from a run never counts against (or for) you.
+
+Every end card has a **Copy result** button: it copies a plain-text summary (level, outcome, time, delay, co-pilot on/off, and the game's link) to your clipboard, for sharing.
 
 ## Screenshots
 
 | | |
 |---|---|
-| ![Title screen with the two level cards](docs/title-screen.jpg) | ![Live driving on the Moon with long shadows and the telemetry panel](docs/moon-live-drive.jpg) |
-| **Title.** Two levels, two very different delays. | **Lunokhod.** Live driving on the Moon. The status line shows your last command on its way, and the telemetry you're steering by is 1.3 s old. |
-| ![TYCHO on Mars, mid-plan on the Jezero crater floor](docs/mars-sol-plan.jpg) | ![End-of-run reveal: a translucent ghost rover ahead of the solid one](docs/reveal-true-vs-seen.jpg) |
-| **Jezero.** Mid-plan on the real Jezero floor. Real one-way delay 3 min, compressed 15x and labeled on screen. Everything in the panel is 12 s old. | **The reveal.** The solid rover is what you saw. The ghost is where TYCHO really was at that moment. |
+| ![Title screen with the three level cards](docs/title-screen.jpg) | ![The parked Lunokhod 2, labeled, on the real Le Monnier crater DEM](docs/lunokhod-parked.jpg) |
+| **Title.** Three levels, three real sites. | **Lunokhod.** The parked Lunokhod 2, an illustrative model, labeled at its real surveyed position. |
+| ![Live driving on the Moon with long shadows and the telemetry panel](docs/moon-live-drive.jpg) | ![TYCHO on Mars, mid-plan on the Jezero crater floor](docs/mars-sol-plan.jpg) |
+| **Tycho.** Live driving up the central peak. The status line shows your last command on its way, and the telemetry you're steering by is 1.3 s old. | **Jezero.** Mid-plan on the real Jezero floor. Real one-way delay 3 min, compressed 15x and labeled on screen. Everything in the panel is 12 s old. |
+| ![End-of-run reveal: a translucent ghost rover ahead of the solid one](docs/reveal-true-vs-seen.jpg) | |
+| **The reveal.** The solid rover is what you saw. The ghost is where TYCHO really was at that moment. | |
 
 <p align="center"><img src="docs/mobile.jpg" alt="TYCHO on a phone: title screen and Moon driving with the touch pad" width="520"></p>
 
@@ -63,16 +69,18 @@ Honesty is the point of this project, so here's the line, drawn plainly. The sam
 
 | | What | Details |
 |---|---|---|
-| **Real** | Moon elevation | LROC NAC DTM `NAC_DTM_TYCHOPK01` (Tycho central peak, native 2 m/px). A 2.4 km square crop resampled to 1024 x 1024, about 2.34 m/px. 1,857 m of relief in the crop. |
+| **Real** | Lunokhod site elevation | LROC NAC DTM `NAC_DTM_LUNOKHOD2` (Le Monnier crater, native 5 m/px). A 5.12 km square crop at native resolution, centered on Lunokhod 2's parked position. 472 m of relief in the crop. |
+| **Real** | Lunokhod 2's parked position | 25.830 N, 30.914 E, facing southeast, lid still open. From LROC post 699, "Lunokhod 2 Revisited". The parked-rover model in the goal spot is an illustrative period-accurate silhouette, not a survey model. |
+| **Real** | Tycho elevation | LROC NAC DTM `NAC_DTM_TYCHOPK01` (Tycho central peak, native 2 m/px). A 2.4 km square crop resampled to 1024 x 1024, about 2.34 m/px. 1,857 m of relief in the crop. |
 | **Real** | Mars elevation | USGS CTX DEM `M20_JezeroCrater_CTXDEM_20m` at native 20 m/px. A 1024 x 1024 window (20.48 km square) centered on the Perseverance landing site, 18.4447 N, 77.4508 E. |
-| **Real** | Moon signal delay | 1.28 s one way, driven live with no compression. |
+| **Real** | Moon signal delay (Lunokhod and Tycho) | 1.28 s one way, driven live with no compression. |
 | **Real, compressed** | Mars signal delay | The real one-way value (3, 12 or 22 min) is always on screen. Play time is compressed 15x, 40x or 55x, so the one-way wait is 12 to 24 s. The compression factor is on screen too. |
 | **Real limits, documented in code** | Physics | Rover tips above 32 degrees of slope (`web/rover-sim.js`). The co-pilot's default guardrail is a more cautious 25 degrees (`web/copilot.js`). Slope is measured over a rover-scale 3 m baseline. |
-| **Real gaps** | No-data areas | Where the orbital stereo model has no data, the ground is dimmed and hatched and treated as impassable. The rover stops there and the co-pilot won't route through it. |
+| **Real gaps** | No-data areas | Where the orbital stereo model has no data, the ground is dimmed and hatched and treated as impassable. The rover stops there and the co-pilot won't route through it. Lunokhod's crop has almost none (0.076% of cells); the Tycho crop, cut from a rotated swath edge, has more. |
 | **Procedural** | Near-field detail | Small craters, rocks and fine surface texture near the rover are generated decoration. Only the large-scale shape comes from the DEM. |
 | **Approximate** | Earth in the lunar sky | Shown at a realistic apparent size, but its sky position is illustrative, not an ephemeris. |
 | **Not photos** | Surface color | Shaded from the elevation data with a Moon or Mars palette. No orbital imagery is used. |
-| **Data-driven proxies** | Spawn and goal | Picked by code from the DEM (lowest safe slope, highest reachable point, roughness near the delta), then moved where testing showed the original spot couldn't be won. Every move is logged in `assets/*/meta.json`. |
+| **Data-driven proxies** | Tycho and Mars spawn/goal | Picked by code from the DEM (lowest safe slope, highest reachable point, roughness near the delta), then moved where testing showed the original spot couldn't be won. Every move is logged in `assets/*/meta.json`. Lunokhod's goal is not a proxy (it's the real parked-rover coordinate); its spawn is a code-picked point 2.06 km south, along the rover's real historic approach direction. |
 
 ## How it works
 
@@ -129,14 +137,14 @@ A stereo DEM is noisy at the single-pixel level, and a rover doesn't feel one pi
 `npm run gate` runs three stages and fails on any of them:
 
 1. **Lint:** a syntax check over every module.
-2. **Unit tests:** 69 `node:test` cases covering the signal link, rover physics, co-pilot, mission state machine, telemetry-only views, load races, scoreboard and terrain sampling.
+2. **Unit tests:** 83 `node:test` cases covering the signal link, rover physics, co-pilot, mission state machine, telemetry-only views, load races, scoreboard (including abandoned-run exclusion and the v1-to-v2 level-key migration), share-result formatting, and terrain sampling.
 3. **Boot probe:** `scripts/verify_boot.mjs` serves the repo and drives the real game in headless Chromium with WebGL.
 
-The unit tests include **playability bots** (`tests/playability.test.mjs`). They load the real shipped DEMs and must actually win. Both bots run the real mission state machine. The Moon bot only sees telemetry through `signal.js`, 1.28 s stale, and steers a safety-buffered A* route to the high-point marker without tipping or touching no-data ground. The Mars bot uplinks a plan through each of the three delay settings (3, 12 and 22 min real, compressed) on the shipped default guardrails and must arrive every time. An early version of these tests caught a real bug: at the two longer delays the stall timer started before the player could even see the rover move, so those runs could never be won. The bots are also the proof that the slope smoothing matters, as described above.
+The unit tests include **playability bots** (`tests/playability.test.mjs`). They load the real shipped DEMs and must actually win. All bots run the real mission state machine. The Lunokhod and Tycho bots only see telemetry through `signal.js`, 1.28 s stale, and steer a safety-buffered A* route to the goal without tipping or touching no-data ground; Lunokhod's crater-field microterrain needed a pure-pursuit lookahead (steer at a point up to 20 m ahead on the route, not just the next grid cell) to drive it at a realistic speed instead of crawling. The Mars bot uplinks a plan through each of the three delay settings (3, 12 and 22 min real, compressed) on the shipped default guardrails and must arrive every time. Two real bugs surfaced this way: at the two longer Mars delays the stall timer started before the player could even see the rover move, so those runs could never be won; and Lunokhod's real terrain forced long stretches without straight-line progress toward the goal while going around microterrain, which needed the stall timeout raised from 20 s to 75 s (an honest widening of a fairness margin, not a special case for the bot). The bots are also the proof that the slope smoothing matters, as described in the section above.
 
-The boot probe checks that the real DEM renders, that the rover's true state doesn't move until the one-way delay has passed (observed: about 1.4 s for 1.28 s), and that your view doesn't change until the round trip is done (observed: about 2.7 s for 2.56 s). It also checks that a Mars plan waits out its 12 s compressed delay, and that the co-pilot holds instead of driving onto a slope it's forbidden to cross.
+The boot probe checks that the real DEM renders on the flagship Lunokhod level, that the rover's true state doesn't move until the one-way delay has passed (observed: about 1.4 s for 1.28 s), and that your view doesn't change until the round trip is done (observed: about 2.7 s for 2.56 s). It also confirms Tycho boots cleanly, that a Mars plan waits out its 12 s compressed delay, that the co-pilot holds instead of driving onto a slope it's forbidden to cross, and that switching from Tycho to Mars clears Tycho's status line instead of leaving it stuck on screen.
 
-The Python pipeline has its own 27 offline tests: georef round trips, nodata fill and mask, resampling, site picking and the meta schema.
+The Python pipeline has its own 34 offline tests: georef round trips (including the Lunokhod raster's different GeoKey combination), nodata fill and mask, resampling, site picking (including the new directional picker used to place Lunokhod's spawn) and the meta schema.
 
 ## Run it locally
 
@@ -159,8 +167,9 @@ Then open <http://localhost:8000/>. The root page redirects to `web/`.
 **Commands**
 
 ```sh
-npm run gate                                         # lint + 69 unit tests + headless boot probe
-python3 tools/build_terrain.py all                   # re-download and rebuild both terrains
+npm run gate                                         # lint + 83 unit tests + headless boot probe
+python3 tools/build_terrain.py all                   # re-download and rebuild the Tycho and Mars terrains
+python3 tools/build_terrain.py lunokhod              # re-download and rebuild the Lunokhod terrain (not part of "all")
 python3 tools/patch_playability_sites.py             # re-apply the documented spawn/goal fixes
 python3 -m unittest discover -s tools -p "test_*.py" # pipeline tests
 ```
@@ -175,14 +184,16 @@ The delays and the 1970s crews show up in the game itself. The rest is context f
 | Mars one-way delay: **about 3 min** at the closest approaches | At the 2003 close approach Earth and Mars were 55.8 million km apart ([NASA Science, Mars: Closest Encounter](https://science.nasa.gov/missions/hubble/mars-closest-encounter/)). That's 3.1 min at light speed. |
 | Mars one-way delay: **up to about 22 min** at the far end of the range | NASA's Moon to Mars architecture paper plots a representative crewed mission with a "maximum one-way communications delay of 22 minutes" ([NASA, Mars Communications Disruption and Delay, PDF](https://www.nasa.gov/wp-content/uploads/2024/01/mars-communications-disruption-and-delay.pdf)). ESA's Mars Express team rounds the full range to about 4 to 24 minutes ([ESA](https://blogs.esa.int/mex/2012/08/05/time-delay-between-mars-and-earth/)). |
 | Lunokhod 1 was **driven live from Earth by a five-person team** (1970) | "guided in real-time by a five person team" ([NASA APOD, 9 January 1999](https://science.nasa.gov/image-article/apod-1999-january-09-lunokhod-moon-robot/)) |
-| Lunokhod 2 was **controlled remotely from Earth** (landed January 1973) | "The rover was controlled remotely by a team of Soviet controllers on Earth." ([LROC, Lunokhod 2 Revisited](http://lroc.sese.asu.edu/posts/699)) |
+| Lunokhod 2 landed **15 January 1973** and was **controlled remotely from Earth** | "The ensemble was launched on 11 January 1973 and the landing occurred on 15 January" and "The rover was controlled remotely by a team of Soviet controllers on Earth." ([LROC, Lunokhod 2 Revisited, post 699](https://lroc.im-ldi.com/posts/699)) |
+| Lunokhod 2 is **still parked at 25.830 N, 30.914 E**, facing southeast, lid still open | "Lunokhod 2 rover is still parked on the floor of the crater Le Monnier (25.830°N, 30.914°E)" and "Lunokhod 2 rover parked facing southeast with the lid still open." ([LROC, Lunokhod 2 Revisited, post 699](https://lroc.im-ldi.com/posts/699)) |
 | Perseverance's top speed is **0.152 km/h** | "just under 0.1 mph (152 meters per hour)" on flat, hard ground ([NASA Science, Perseverance rover components](https://science.nasa.gov/mission/mars-2020-perseverance/rover-components/)) |
 
 TYCHO itself is much faster than Perseverance (up to 3 m/s). That's a game choice so a run takes minutes, not days.
 
 ## Credits and licenses
 
-- **Moon terrain:** LROC NAC DTM `NAC_DTM_TYCHOPK01`, credit **NASA/GSFC/Arizona State University**. "LROC Reduced Data Record (RDR) products available through the NASA Planetary Data System (PDS) are in the public domain." [Product page](https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_DTM_TYCHOPK01).
+- **Lunokhod site terrain:** LROC NAC DTM `NAC_DTM_LUNOKHOD2`, credit **NASA/GSFC/Arizona State University**. "LROC Reduced Data Record (RDR) products available through the NASA Planetary Data System (PDS) are in the public domain." [Product page](https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_DTM_LUNOKHOD2).
+- **Tycho terrain:** LROC NAC DTM `NAC_DTM_TYCHOPK01`, credit **NASA/GSFC/Arizona State University**. Same PDS public-domain terms. [Product page](https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_DTM_TYCHOPK01).
 - **Mars terrain:** USGS CTX DEM `M20_JezeroCrater_CTXDEM_20m`, credit **NASA/JPL-Caltech/MSSS/USGS** (USGS Astrogeology). Under NASA's data policy, "data from a NASA-led mission is licensed as Creative Commons Zero (CC0); public domain, no usage restrictions." [Source directory](https://planetarymaps.usgs.gov/mosaic/mars2020_trn/CTX/ScienceInvestigationMaps_JPL/).
 - **Rendering:** [three.js](https://threejs.org/), MIT License.
 - **Fonts:** IBM Plex, loaded from Google Fonts, SIL Open Font License.

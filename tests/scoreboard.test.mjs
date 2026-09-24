@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { loadScoreboard, saveScoreboard, recordRun, aggregate, sampleSizeNote } from "../web/scoreboard.js";
+import { loadScoreboard, saveScoreboard, recordRun, aggregate, sampleSizeNote, migrateLevelKey } from "../web/scoreboard.js";
 
 function withFakeStorage(store, fn) {
   const original = globalThis.localStorage;
@@ -45,11 +45,11 @@ test("saveScoreboard tolerates a localStorage that throws", () => {
 
 test("save then load round-trips through a working storage", () => {
   withFakeStorage(memoryStorage(), () => {
-    const data = recordRun({}, "moon", { outcome: "arrived", timeSec: 12, distanceM: 40, copilotOn: false });
+    const data = recordRun({}, "tycho", { outcome: "arrived", timeSec: 12, distanceM: 40, copilotOn: false });
     assert.equal(saveScoreboard(data), true);
     const loaded = loadScoreboard();
-    assert.equal(loaded.moon.length, 1);
-    assert.equal(loaded.moon[0].outcome, "arrived");
+    assert.equal(loaded.tycho.length, 1);
+    assert.equal(loaded.tycho[0].outcome, "arrived");
   });
 });
 
@@ -90,4 +90,55 @@ test("sampleSizeNote flags low n as noisy", () => {
   assert.match(sampleSizeNote(0), /no runs yet/);
   assert.match(sampleSizeNote(2), /too few runs to trust/);
   assert.equal(sampleSizeNote(10), "n=10");
+});
+
+// --- U2: abandoned runs -----------------------------------------------
+
+test("U2: abandoned runs are recorded but excluded from n and every success rate", () => {
+  let data = {};
+  data = recordRun(data, "lunokhod", { outcome: "arrived", timeSec: 100, distanceM: 2000, copilotOn: false });
+  data = recordRun(data, "lunokhod", { outcome: "abandoned", timeSec: 5, distanceM: 30, copilotOn: false });
+  data = recordRun(data, "lunokhod", { outcome: "abandoned", timeSec: 2, distanceM: 10, copilotOn: false });
+  const stats = aggregate(data, "lunokhod");
+  assert.equal(stats.n, 1, "abandoned runs must not count toward n");
+  assert.equal(stats.abandonedCount, 2);
+  assert.equal(stats.successRateAll, 1, "the one real (arrived) run is the only one counted");
+  assert.equal(stats.runs.length, 3, "raw history (runs) still includes abandoned runs, only the aggregate excludes them");
+});
+
+test("U2: sampleSizeNote discloses an abandoned count without folding it into n", () => {
+  assert.match(sampleSizeNote(3, 2), /n=3/);
+  assert.match(sampleSizeNote(3, 2), /2 abandoned \(excluded\)/);
+  assert.equal(sampleSizeNote(4, 0).includes("abandoned"), false);
+});
+
+// --- migration: v1's single "moon" key -> "tycho" ----------------------
+
+test("migrateLevelKey renames an old key's history to the new key when the new key is absent", () => {
+  const data = { moon: [{ outcome: "arrived", timeSec: 1, distanceM: 1, copilotOn: false }] };
+  const migrated = migrateLevelKey(data, "moon", "tycho");
+  assert.equal(migrated.tycho.length, 1);
+  assert.equal(migrated.moon, undefined);
+});
+
+test("migrateLevelKey never overwrites existing history at the new key", () => {
+  const data = {
+    moon: [{ outcome: "tipped", timeSec: 1, distanceM: 1, copilotOn: false }],
+    tycho: [{ outcome: "arrived", timeSec: 2, distanceM: 2, copilotOn: false }],
+  };
+  const migrated = migrateLevelKey(data, "moon", "tycho");
+  assert.equal(migrated.tycho.length, 1, "tycho already had its own history and must not be clobbered");
+  assert.equal(migrated.moon.length, 1, "unmigrated moon history is left in place, not silently dropped");
+});
+
+test("loadScoreboard migrates old \"moon\" runs to \"tycho\" on load", () => {
+  withFakeStorage(memoryStorage(), () => {
+    globalThis.localStorage.setItem(
+      "tycho.scoreboard.v1",
+      JSON.stringify({ moon: [{ outcome: "arrived", timeSec: 1, distanceM: 1, copilotOn: false, at: 1 }] }),
+    );
+    const loaded = loadScoreboard();
+    assert.equal(loaded.tycho.length, 1);
+    assert.equal(loaded.moon, undefined);
+  });
 });

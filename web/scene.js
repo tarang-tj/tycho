@@ -20,6 +20,7 @@ import { bakeSunMask, buildDemGeometry, buildDemNormalTexture, buildRingGeometry
 import { createNearField } from "./near-field.js";
 import { createSky, makeEnvironment } from "./sky.js";
 import { createRoverModel } from "./rover-model.js";
+import { createParkedLunokhod } from "./lunokhod-parked.js";
 import { createRoverRig } from "./rover-rig.js";
 import { createTracks, createDust } from "./ground-fx.js";
 import { createOverlays } from "./overlays.js";
@@ -40,6 +41,12 @@ const LOOK = {
 };
 
 function resolveBody(opts) {
+  // Lunokhod is a real Le Monnier crater site on the Moon: it shares every
+  // lighting/material/terrain-shaping look with the "moon" body (see LOOK,
+  // terrain-field.js, textures.js, none of which know a third body key) -
+  // only createScene's own Lunokhod-specific placement code below checks the
+  // RAW opts.body (not this resolved value) to tell the sites apart.
+  if (opts.body === "lunokhod") return "moon";
   if (opts.body === "moon" || opts.body === "mars") return opts.body;
   if (/mars/i.test(opts.albedoUrl || "")) return "mars";
   if (/moon/i.test(opts.albedoUrl || "")) return "moon";
@@ -211,6 +218,51 @@ export function createScene(canvas, terrain, opts = {}) {
   const goalPx = terrain.meta?.goal;
   if (goalPx) overlays.setGoal(goalPx.x * mpp, goalPx.y * mpp);
 
+  // U1: on the Lunokhod level, the goal itself is a real, still-parked
+  // rover - render an illustrative period-accurate model there so it's
+  // visible on approach, not just a HUD marker (see lunokhod-parked.js), and
+  // a floating label naming it (goalLabel from the asset's own meta.json,
+  // never invented here).
+  let parkedLunokhod = null;
+  let goalLabelSprite = null;
+  if (opts.body === "lunokhod" && goalPx) {
+    parkedLunokhod = createParkedLunokhod();
+    const gw = field.pxToWorld(goalPx.x, goalPx.y);
+    const groundY = near.groundAt(gw.x, gw.z);
+    parkedLunokhod.root.position.set(gw.x, groundY, gw.z);
+    // "Facing southeast" (LROC post 699). World +x is east and +z is south (pxToWorld maps map rows to z), and
+    // rotation.y = t turns local +z toward (sin t, cos t): southeast is t = 45 deg.
+    parkedLunokhod.root.rotation.y = (45 * Math.PI) / 180;
+    scene.add(parkedLunokhod.root);
+
+    const labelText = terrain.meta?.goalLabel;
+    if (labelText) {
+      // Canvas is sized to the MEASURED text width first (a fixed-width
+      // canvas clipped the label on an earlier pass - the full string is
+      // wider than a naive fixed guess at this font size).
+      const measureCanvas = document.createElement("canvas");
+      const mg = measureCanvas.getContext("2d");
+      mg.font = "600 40px 'IBM Plex Sans Condensed', sans-serif";
+      const textW = Math.ceil(mg.measureText(labelText).width);
+      const c = document.createElement("canvas");
+      c.width = textW + 80; c.height = 96;
+      const g = c.getContext("2d");
+      g.font = "600 40px 'IBM Plex Sans Condensed', sans-serif";
+      g.textAlign = "center";
+      g.textBaseline = "middle";
+      g.fillStyle = "rgba(5,6,10,0.6)";
+      g.fillRect(10, 14, c.width - 20, 68);
+      g.fillStyle = "#e9f4ff";
+      g.fillText(labelText, c.width / 2, c.height / 2);
+      const labelTex = new THREE.CanvasTexture(c);
+      goalLabelSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTex, transparent: true, depthWrite: false }));
+      const aspect = c.width / c.height;
+      goalLabelSprite.scale.set(1.15 * aspect, 1.15, 1);
+      goalLabelSprite.position.set(gw.x, groundY + 4.5, gw.z);
+      scene.add(goalLabelSprite);
+    }
+  }
+
   const camera = new THREE.PerspectiveCamera(50, canvas.clientWidth / Math.max(1, canvas.clientHeight), 0.08, 160000);
   const camRig = createCameraRig(camera, canvas, { groundAt: near.groundAt, openingDir: body === "moon" ? sky.earthDir : sky.sunDir, body });
 
@@ -365,6 +417,9 @@ export function createScene(canvas, terrain, opts = {}) {
       for (const m of list) { m.map?.dispose?.(); m.normalMap?.dispose?.(); m.dispose(); }
     });
     for (const t of [detailA, detailB, detailC, fillTex, realMaskTex, demNormalTex, sprite, U.uDemAlbedo.value]) t?.dispose?.();
+    parkedLunokhod?.dispose?.();
+    goalLabelSprite?.material?.map?.dispose?.();
+    goalLabelSprite?.material?.dispose?.();
     sunMask.dispose();
     env.dispose();
     sky.dispose();

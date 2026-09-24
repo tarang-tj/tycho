@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-body="moon">
+<html lang="en" data-body="lunokhod">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -35,7 +35,8 @@
       <small>Drive the delay</small>
     </div>
     <div class="level-select" role="group" aria-label="Level select">
-      <button type="button" data-level="moon" class="level-btn" aria-pressed="true">Lunokhod <span>Moon</span></button>
+      <button type="button" data-level="lunokhod" class="level-btn" aria-pressed="true">Lunokhod <span>Moon</span></button>
+      <button type="button" data-level="tycho" class="level-btn" aria-pressed="false">Tycho <span>Moon</span></button>
       <button type="button" data-level="mars" class="level-btn" aria-pressed="false">Jezero <span>Mars</span></button>
     </div>
     <button type="button" id="aboutDataBtn" class="about-data-btn" aria-haspopup="dialog" aria-controls="aboutDataPanel">About the data</button>
@@ -48,7 +49,8 @@
         <button type="button" id="aboutDataClose" class="about-data-close" aria-label="Close">&times;</button>
       </div>
       <dl class="about-data-list">
-        <div><dt>Elevation is real</dt><dd>Moon: LROC NAC DTM NAC_DTM_TYCHOPK01, 2 m/px native, resampled to 2.34 m/px for this crop, NASA/GSFC/Arizona State University. Mars: USGS CTX DEM M20_JezeroCrater_CTXDEM_20m, 20 m/px, NASA/JPL-Caltech/MSSS/USGS. Both public domain / CC0.</dd></div>
+        <div><dt>Elevation is real</dt><dd>Lunokhod: LROC NAC DTM NAC_DTM_LUNOKHOD2, 5 m/px native, NASA/GSFC/Arizona State University. Tycho: LROC NAC DTM NAC_DTM_TYCHOPK01, 2 m/px native, resampled to 2.34 m/px for this crop, NASA/GSFC/Arizona State University. Mars: USGS CTX DEM M20_JezeroCrater_CTXDEM_20m, 20 m/px, NASA/JPL-Caltech/MSSS/USGS. All public domain / CC0.</dd></div>
+        <div><dt>Lunokhod 2's parked position is real</dt><dd>25.830°N, 30.914°E, facing southeast with its lid still open, per LROC post 699 "Lunokhod 2 Revisited". The rover model shown there is an illustrative period-accurate silhouette, not a survey model.</dd></div>
         <div><dt>Surface detail is procedural</dt><dd>Small craters, rocks, and regolith texture near the rover are generated decoration, not measured. Only the large-scale elevation shape comes from the real DEM.</dd></div>
         <div><dt>Earth's position is approximate</dt><dd>Shown at its real apparent size and lit consistently with the sun, but its sky position and the geography visible on it are illustrative, not a precise ephemeris.</dd></div>
         <div><dt>Mars delay is compressed for play</dt><dd>The real one-way light-time delay is 3 to 22 minutes depending on where Earth and Mars are in their orbits. This game compresses it 15x to 55x (labeled on screen each run) so a sol plan resolves in seconds, not real minutes.</dd></div>
@@ -87,11 +89,17 @@
       <p class="title-sub">Drive the delay.</p>
       <p class="title-story">TYCHO is a small rover on the real Moon and Mars. Every command you send crosses space at the speed of light, and everything you see has already happened.</p>
       <div class="level-cards" role="radiogroup" aria-label="Choose a level">
-        <button type="button" class="level-card" role="radio" aria-checked="true" data-level="moon">
+        <button type="button" class="level-card" role="radio" aria-checked="true" data-level="lunokhod">
           <span class="card-name">Lunokhod</span>
+          <span class="card-meta">Moon · Le Monnier crater</span>
+          <span class="card-delay">1.28 s</span>
+          <span class="card-note">Drive to where Lunokhod 2 still sits</span>
+        </button>
+        <button type="button" class="level-card" role="radio" aria-checked="false" data-level="tycho">
+          <span class="card-name">Tycho</span>
           <span class="card-meta">Moon · Tycho central peak</span>
           <span class="card-delay">1.28 s</span>
-          <span class="card-note">Steer live, like the 1970s crews did</span>
+          <span class="card-note">Steep terrain, a short climb to the top</span>
         </button>
         <button type="button" class="level-card" role="radio" aria-checked="false" data-level="mars">
           <span class="card-name">Jezero</span>

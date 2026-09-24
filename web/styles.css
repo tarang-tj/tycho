@@ -90,7 +90,8 @@ button { font: inherit; color: inherit; }
 }
 #mission-panel button:hover:not(:disabled) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 #mission-panel button:disabled { opacity: 0.4; cursor: default; }
-.mission-start-btn, .mission-uplink-btn, .mission-retry-btn { border-color: color-mix(in srgb, var(--accent) 60%, transparent) !important; color: var(--accent) !important; text-transform: uppercase; }
+.mission-start-btn, .mission-uplink-btn, .mission-retry-btn, .mission-copy-btn { border-color: color-mix(in srgb, var(--accent) 60%, transparent) !important; color: var(--accent) !important; text-transform: uppercase; }
+.mission-endcard-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem; }
 .mission-plan-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; }
 .mission-plan-controls button { margin: 0 !important; text-align: center !important; }
 .mission-minimap { display: block; width: 100%; height: auto; aspect-ratio: 1; border: 1px solid var(--line-strong); border-radius: 4px; cursor: crosshair; image-rendering: auto; margin: 0.3rem 0; }
@@ -120,19 +121,20 @@ button { font: inherit; color: inherit; }
 body.title-open .title-screen { opacity: 1; visibility: visible; transition: opacity 0.7s ease; }
 body.title-open .topbar, body.title-open .hud, body.title-open .terrain-banner, body.title-open .mars-delay-note { opacity: 0; pointer-events: none; }
 body.title-open .hud { transform: translateY(10px); }
-.title-inner { width: min(600px, 100%); padding: 6vh 0 5vh 6vw; }
+.title-inner { width: min(720px, 100%); padding: 6vh 0 5vh 6vw; }
 .title-eyebrow { margin: 0 0 1.1rem; font-family: var(--mono); font-size: 0.82rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); }
 .wordmark { margin: 0; font-family: var(--cond); font-weight: 600; font-size: clamp(4.2rem, 11vw, 9.5rem); line-height: 0.86; letter-spacing: 0.14em; color: #f2f0ea; margin-left: -0.04em; }
 .title-sub { margin: 0.9rem 0 0; font-family: var(--cond); font-size: clamp(1.3rem, 2.4vw, 1.75rem); color: var(--accent); letter-spacing: 0.03em; }
 .title-story { margin: 1rem 0 1.8rem; max-width: 44ch; color: #b9b8b3; font-size: 0.95rem; line-height: 1.6; }
-.level-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 0.7rem; margin-bottom: 1.3rem; }
+.level-cards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.7rem; margin-bottom: 1.3rem; }
 .level-card {
   display: flex; flex-direction: column; align-items: flex-start; gap: 0.2rem; padding: 0.95rem 1rem 1rem; text-align: left; cursor: pointer;
   background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line-strong); border-radius: 6px; transition: border-color 0.25s, background 0.25s;
 }
 .level-card:hover { background: rgba(255, 255, 255, 0.06); }
 .level-card[aria-checked="true"] { border-color: var(--card-accent); background: color-mix(in srgb, var(--card-accent) 7%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--card-accent) 40%, transparent); }
-.level-card[data-level="moon"] { --card-accent: #9fd8ff; }
+.level-card[data-level="lunokhod"] { --card-accent: #9fd8ff; }
+.level-card[data-level="tycho"] { --card-accent: #c9c8ff; }
 .level-card[data-level="mars"] { --card-accent: #ffb27a; }
 .card-name { font-family: var(--cond); font-weight: 600; font-size: 1.3rem; letter-spacing: 0.06em; }
 .card-meta { font-family: var(--mono); font-size: 0.82rem; color: var(--muted); letter-spacing: 0.04em; }
@@ -167,7 +169,7 @@ body.title-open .hud { transform: translateY(10px); }
   .title-inner { padding: 30vh 1rem calc(1.4rem + env(safe-area-inset-bottom)); }
   .title-eyebrow { font-size: 0.82rem; letter-spacing: 0.14em; margin-bottom: 0.6rem; }
   .title-story { font-size: 0.86rem; margin: 0.7rem 0 1.1rem; }
-  .level-cards { gap: 0.5rem; margin-bottom: 1rem; }
+  .level-cards { grid-template-columns: 1fr; gap: 0.5rem; margin-bottom: 1rem; }
   .level-card { padding: 0.75rem 0.75rem 0.8rem; }
   .card-name { font-size: 1.1rem; }
   .card-delay { font-size: 1.15rem; margin-top: 0.35rem; }

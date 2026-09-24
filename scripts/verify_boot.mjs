@@ -116,15 +116,18 @@ try {
 
   const terrainInfo = await page.evaluate(() => window.TYCHO.getTerrainInfo());
   assert.ok(terrainInfo && terrainInfo.width > 0, "terrain info missing");
-  console.log(`terrain: ${terrainInfo.synthetic ? "synthetic" : "real DEM"}, ${terrainInfo.width}x${terrainInfo.width}, ${terrainInfo.metersPerPixel} m/px`);
+  console.log(`Lunokhod terrain: ${terrainInfo.synthetic ? "synthetic" : "real DEM"}, ${terrainInfo.width}x${terrainInfo.width}, ${terrainInfo.metersPerPixel} m/px`);
 
   const paint = await page.evaluate(sampleCanvasPainted);
   assert.ok(paint.fraction > 0.02, `scene appears blank: only ${(paint.fraction * 100).toFixed(2)}% of ${paint.width}x${paint.height} pixels lit`);
 
   // ---------------------------------------------------------------------
-  // Moon: mission starts in "brief"; debug.startMission() begins the run.
+  // Lunokhod (the boot level): mission starts in "brief";
+  // debug.startMission() begins the run. Proves real DEM rendering AND the
+  // live 1.28s delay on the flagship level.
   // ---------------------------------------------------------------------
-  assert.equal(await page.evaluate(() => window.TYCHO.getLevel()), "moon");
+  assert.equal(await page.evaluate(() => window.TYCHO.getLevel()), "lunokhod");
+  assert.equal(terrainInfo.synthetic, false, "Lunokhod must render the real shipped DEM, not the synthetic fallback");
   assert.equal(await page.evaluate(() => window.TYCHO.debug.getMission().status), "brief");
   await page.evaluate(() => window.TYCHO.debug.startMission());
   assert.equal(await page.evaluate(() => window.TYCHO.debug.getMission().status), "active");
@@ -152,16 +155,16 @@ try {
   }, moonDelay * 2000 + 2500, `visible state never moved (expected ~${moonDelay * 2000}ms after send)`);
   const visibleMovedAtMs = Date.now() - t0;
   assert.ok(visibleMovedAtMs >= moonDelay * 2000 - 500, `visible state moved too early: ${visibleMovedAtMs}ms`);
-  console.log(`Moon: true state moved at ${trueMovedAtMs}ms (~${moonDelay * 1000}ms expected), visible state moved at ${visibleMovedAtMs}ms (~${moonDelay * 2000}ms expected)`);
+  console.log(`Lunokhod: true state moved at ${trueMovedAtMs}ms (~${moonDelay * 1000}ms expected), visible state moved at ${visibleMovedAtMs}ms (~${moonDelay * 2000}ms expected)`);
 
-  // Moon win condition: debug-place the rover a few meters from the goal
-  // (well inside the win radius) and let telemetry catch up. Real DEM
-  // summits can be locally very steep even a pixel or two from the goal
-  // marker, so search a small neighborhood for a landing spot that is both
-  // within the win radius and under the slope limit, instead of assuming
-  // the goal pixel itself is safe to stand on.
+  // Lunokhod win condition: debug-place the rover a few meters from the
+  // goal (the parked Lunokhod 2, well inside the win radius) and let
+  // telemetry catch up. Real DEM terrain can be locally steep even a pixel
+  // or two from the goal marker, so search a small neighborhood for a
+  // landing spot that is both within the win radius and under the slope
+  // limit, instead of assuming the goal pixel itself is safe to stand on.
   const moonGoal = terrainInfo.goal;
-  assert.ok(moonGoal, "Moon terrain meta is missing a goal");
+  assert.ok(moonGoal, "Lunokhod terrain meta is missing a goal");
   const landingSpot = await page.evaluate(async (goal) => {
     const mpp = window.TYCHO.getTerrainInfo().metersPerPixel;
     const maxOffsetPx = Math.floor(12 / mpp); // stay inside the 15m win radius with margin
@@ -181,7 +184,31 @@ try {
     const m = await page.evaluate(() => window.TYCHO.debug.getMission());
     return m.status === "won";
   }, moonDelay * 2000 + 3000, "Moon win condition (mission.status === 'won') was never reached from a debug placement near the goal");
-  console.log("Moon: win condition reachable via debug.placeRoverAt near the goal.");
+  console.log("Lunokhod: win condition reachable via debug.placeRoverAt near the goal.");
+
+  // ---------------------------------------------------------------------
+  // Tycho: a second Moon-body level, distinct terrain, still boots and
+  // renders. Not exercised as deeply as Lunokhod/Mars (same live-drive
+  // mechanics as Lunokhod, already proven above) - just confirms the level
+  // switch, real DEM, and a fresh "brief" mission all come up cleanly.
+  // ---------------------------------------------------------------------
+  await page.evaluate(() => window.TYCHO.switchLevel("tycho"));
+  await page.waitForFunction(() => window.TYCHO.getLevel() === "tycho", null, { timeout: 5000 });
+  await page.waitForFunction(() => window.TYCHO.ready === true, null, { timeout: 10000 });
+  const tychoTerrainInfo = await page.evaluate(() => window.TYCHO.getTerrainInfo());
+  assert.ok(tychoTerrainInfo && tychoTerrainInfo.width > 0, "Tycho terrain info missing");
+  assert.equal(await page.evaluate(() => window.TYCHO.debug.getMission().status), "brief");
+  const tychoPaint = await page.evaluate(sampleCanvasPainted);
+  assert.ok(tychoPaint.fraction > 0.02, `Tycho scene appears blank: only ${(tychoPaint.fraction * 100).toFixed(2)}% of pixels lit`);
+  console.log(`Tycho: booted cleanly, ${tychoTerrainInfo.synthetic ? "synthetic" : "real DEM"}, ${tychoTerrainInfo.width}x${tychoTerrainInfo.width}, ${tychoTerrainInfo.metersPerPixel} m/px.`);
+
+  // Bug fix probe: a live command on Tycho sets the "Sent, arrives in..."
+  // status line; switching levels must clear it immediately, not leave it
+  // visible until the new level's own first uplink (the reported bug).
+  await page.evaluate(() => window.TYCHO.debug.startMission());
+  await page.evaluate(() => window.TYCHO.sendCommand({ throttle: 1, steer: 0 }));
+  const statusAfterSend = await page.evaluate(() => document.querySelector(".mission-status-line")?.textContent ?? "");
+  assert.match(statusAfterSend, /arrives in/, "precondition: sending a command on Tycho should set the status line");
 
   // ---------------------------------------------------------------------
   // Mars: sol plan uplink respects the compressed delay before driving.
@@ -189,6 +216,9 @@ try {
   await page.evaluate(() => window.TYCHO.switchLevel("mars"));
   await page.waitForFunction(() => window.TYCHO.getLevel() === "mars", null, { timeout: 5000 });
   await page.waitForFunction(() => window.TYCHO.ready === true, null, { timeout: 10000 });
+  const statusAfterSwitch = await page.evaluate(() => document.querySelector(".mission-status-line")?.textContent ?? "");
+  assert.doesNotMatch(statusAfterSwitch, /arrives in/, `Tycho's stale status line leaked into Mars after a level switch: "${statusAfterSwitch}"`);
+  console.log("Status line bug fix confirmed: switching levels clears the previous level's status line.");
 
   // "close" scenario: real one-way 3 min compressed 15x -> 12s wait.
   await page.evaluate(() => window.TYCHO.debug.startMission("close"));
@@ -257,7 +287,7 @@ try {
   // synthetic-fallback path. Any OTHER console/page error fails the gate.
   const unexpected = errors.filter((message) => !/Failed to load resource/.test(message));
   assert.equal(unexpected.length, 0, `unexpected console/page errors: ${unexpected.join("\n")}`);
-  console.log("verify:boot PASSED - WebGL terrain rendered, Moon win condition, Mars sol-plan delay, and co-pilot HOLD all proven end to end.");
+  console.log("verify:boot PASSED - WebGL terrain rendered, Lunokhod win condition, Tycho boot, Mars sol-plan delay, and co-pilot HOLD all proven end to end.");
   await page.close();
 } finally {
   await browser?.close();

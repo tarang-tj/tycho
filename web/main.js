@@ -8,7 +8,7 @@ import { createSignalLink } from "./signal.js";
 import { createRover, stepRover, steerTowardPoint } from "./rover-sim.js";
 import { createScene } from "./scene.js";
 import { planRoute, DEFAULT_GUARDRAILS } from "./copilot.js";
-import { createMission, startMission, updateMission, whatHappenedLine } from "./mission.js";
+import { createMission, startMission, updateMission, whatHappenedLine, averageDelaySec } from "./mission.js";
 import { deriveCopilotDisplay, planVisibleToPlayer } from "./telemetry-view.js";
 import { createGenerationGuard, createSingleLoop } from "./async-guards.js";
 import { loadScoreboard, saveScoreboard, recordRun, aggregate } from "./scoreboard.js";
@@ -18,6 +18,7 @@ import { updateHudReadout } from "./hud-readout.js";
 import { wireControls } from "./controls.js";
 
 const FIXED_DT = 1 / 60;
+const PUBLISHED_URL = "https://tarang-tj.github.io/tycho/";
 const WAYPOINT_ARRIVE_RADIUS_M = 6;
 const TERMINAL_STATUSES = new Set(["won", "tipped", "stalled", "held"]);
 
@@ -41,9 +42,9 @@ let terrain, scene, signal, trueState, visibleState = null;
 let simTime = 0;
 let currentControl = { throttle: 0, steer: 0 };
 let controls = null; // set below by wireControls(); exposes resetIntent()
-let currentLevelKey = "moon";
+let currentLevelKey = "lunokhod";
 let accumulator = 0;
-let mission = createMission("moon");
+let mission = createMission("lunokhod");
 let lastMissionStatus = mission.status;
 let guardrails = { ...DEFAULT_GUARDRAILS };
 let autopilot = null; // { path: [{x,y}], index, holdReason } - TRUE (present) state, on the rover
@@ -137,6 +138,11 @@ function handleMissionTransition() {
     outcome: mission.outcome, timeSec, distanceM: mission.distanceTraveledM,
     whatHappened: whatHappenedLine(mission),
     onRetry: () => beginRun(activeScenarioKey),
+    share: {
+      levelLabel: LEVELS[currentLevelKey].label, outcome: mission.outcome, timeSec,
+      delaySec: averageDelaySec(mission) || signal?.oneWayDelaySec || null,
+      copilotOn, url: PUBLISHED_URL,
+    },
   });
 }
 
@@ -278,8 +284,24 @@ function resizeCanvas() {
 
 let activeScenarioKey = null;
 
+/** U2: a run still "active" (never reached a real outcome) when the player
+ * walks away from it - by switching levels or restarting mid-run - is
+ * recorded as "abandoned" rather than silently dropped or counted as a
+ * failure. Excluded from success rates (scoreboard.js's aggregate()). */
+function recordAbandonedIfActive() {
+  if (!mission || mission.status !== "active" || !terrain) return;
+  const timeSec = simTime - (mission.startSimTime ?? simTime);
+  const copilotOn = LEVELS[currentLevelKey].mode === "plan" && guardrails.hazardMode === "reroute";
+  scoreboardData = recordRun(scoreboardData, currentLevelKey, {
+    outcome: "abandoned", timeSec, distanceM: mission.distanceTraveledM, copilotOn,
+  });
+  saveScoreboard(scoreboardData);
+  hud.updateScoreboard(currentLevelKey, aggregate(scoreboardData, currentLevelKey));
+}
+
 /** Begin (or restart) a run: reset physics/signal/mission state, keeping the already-loaded terrain/scene. */
 function beginRun(scenarioKey) {
+  recordAbandonedIfActive(); // a mid-run restart abandons whatever was active
   const level = LEVELS[currentLevelKey];
   activeScenarioKey = scenarioKey ?? null;
   const delaySec = level.mode === "plan"
@@ -288,6 +310,7 @@ function beginRun(scenarioKey) {
 
   hud.hideBrief();
   hud.hideEndCard();
+  hud.setStatusLine(""); // bug fix: a stale "Sent, arrives in..." line from the PREVIOUS run/level must not linger until a new uplink
 
   const spawn = terrain.meta.spawn ?? { x: terrain.width / 2, y: terrain.height / 2 };
   trueState = createRover({ x: spawn.x, y: spawn.y, heading: 0 });
@@ -345,6 +368,7 @@ function resetRun() {
 async function loadLevel(key, opts = {}) {
   const level = LEVELS[key];
   if (!level) throw new Error(`unknown level "${key}"`);
+  if (key !== currentLevelKey) recordAbandonedIfActive(); // U2: leaving a level mid-run abandons it, attributed to the OLD level
 
   if (key === currentLevelKey && terrain) {
     // Same level already loaded: skip the reload race (and the GPU
@@ -362,6 +386,7 @@ async function loadLevel(key, opts = {}) {
   const gen = loadGuard.next();
   hud.hidePlanning();
   hud.hideEndCard();
+  hud.setStatusLine(""); // bug fix: a switch straight to another level's BRIEF (no run started yet) must not leave the OLD level's "Sent, arrives in..." line up
 
   const nextTerrain = await loadTerrain(level.body);
   if (!loadGuard.isCurrent(gen)) return; // superseded by a newer level switch meanwhile
@@ -418,7 +443,7 @@ controls = wireControls({
   stopLoop: () => runLoop.stop(),
 });
 
-loadLevel("moon").catch((error) => {
+loadLevel("lunokhod").catch((error) => {
   console.error("TYCHO failed to boot:", error);
   el.fallback.hidden = false;
   el.fallback.textContent = `TYCHO failed to start: ${error.message}`;

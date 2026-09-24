@@ -1,4 +1,5 @@
 // Pure terrain module. Testable in node (no DOM/three.js dependency).
+import { generateSyntheticTerrain } from "./terrain-synthetic.js";
 //
 // Data contract (matches ~/plans/260923-2234-tycho-rover/plan.md):
 //   assets/<body>/height.bin  Uint16 LE, width*height samples, row-major
@@ -158,76 +159,12 @@ function buildTerrain({ width, height, metersPerPixel, elevations, synthetic, me
  * Synthetic development/test terrain: a cone peak plus low-amplitude
  * deterministic noise. Used whenever real DEM assets are missing so the
  * engine, tests, and UI never special-case "no data yet" - and so real
- * data from the parallel data-pipeline lane drops in with zero code changes.
+ * data from the data pipeline drops in with zero code changes. The raw
+ * heightfield generation lives in terrain-synthetic.js (U4: file-size
+ * split); this wraps its output in the shared terrain interface.
  */
-export function createSyntheticTerrain({ width = 256, height = 256, metersPerPixel = 4, peakHeight = 140, seed = 1 } = {}) {
-  const elevations = new Float32Array(width * height);
-  const cx = width / 2;
-  const cy = height / 2;
-  const maxR = Math.min(cx, cy);
-
-  // Deterministic pseudo-random noise (mulberry32), so tests are reproducible.
-  let s = seed >>> 0;
-  function rand() {
-    s |= 0; s = (s + 0x6d2b79f5) | 0;
-    let t = Math.imul(s ^ (s >>> 15), 1 | s);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  }
-
-  // Low-frequency value noise: sample a coarse lattice (one point every
-  // NOISE_CELL pixels) and bilinearly interpolate it up to full resolution.
-  // White per-pixel noise would put a near-vertical wall between adjacent
-  // samples, which breaks the "gentle summit, steeper flank" shape this
-  // terrain is meant to have. Correlated noise stays gentle at any scale.
-  const NOISE_CELL = 8;
-  const latticeW = Math.ceil(width / NOISE_CELL) + 2;
-  const latticeH = Math.ceil(height / NOISE_CELL) + 2;
-  const lattice = new Float32Array(latticeW * latticeH);
-  for (let i = 0; i < lattice.length; i++) lattice[i] = rand() - 0.5;
-
-  function noiseAt(x, y) {
-    const gx = x / NOISE_CELL;
-    const gy = y / NOISE_CELL;
-    const x0 = Math.floor(gx), y0 = Math.floor(gy);
-    const tx = gx - x0, ty = gy - y0;
-    const g = (ix, iy) => lattice[iy * latticeW + ix];
-    const top = g(x0, y0) + (g(x0 + 1, y0) - g(x0, y0)) * tx;
-    const bottom = g(x0, y0 + 1) + (g(x0 + 1, y0 + 1) - g(x0, y0 + 1)) * tx;
-    return top + (bottom - top) * ty;
-  }
-
-  // Smoothstep dome (not a linear cone): flat at the summit (r=0) and at the
-  // outer rim (r=1), with the slope concentrated on the mid-flank. A linear
-  // cone has a CONSTANT gradient magnitude at every radius from just above 0
-  // to just below 1, which put the rover's spawn point on an unclimbable
-  // wall; smoothstep keeps peak slope bounded and predictable
-  // (max |dz/dr| = 1.5 * peakHeight / maxR, at r = 0.5).
-  function domeHeight(r) {
-    const t = Math.max(0, Math.min(1, r));
-    const smooth = t * t * (3 - 2 * t);
-    return (1 - smooth) * peakHeight;
-  }
-
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const dx = x - cx;
-      const dy = y - cy;
-      const r = Math.hypot(dx, dy) / maxR;
-      const dome = domeHeight(r);
-      const noise = noiseAt(x, y) * peakHeight * 0.03;
-      elevations[y * width + x] = dome + noise;
-    }
-  }
-  const meta = {
-    width, height, metersPerPixel,
-    minElev: 0, maxElev: peakHeight,
-    spawn: { x: cx * 0.25, y: cy },
-    goal: { x: cx, y: cy },
-    source: "synthetic cone + noise (development/test placeholder)",
-    license: "n/a (generated)",
-    delayOneWaySec: 1.28,
-  };
+export function createSyntheticTerrain(opts = {}) {
+  const { width, height, metersPerPixel, elevations, meta } = generateSyntheticTerrain(opts);
   return buildTerrain({ width, height, metersPerPixel, elevations, synthetic: true, meta });
 }
 

@@ -3,14 +3,26 @@
 // so this is deterministic and unit-testable in node.
 
 export const GOAL_RADIUS_M = 15;
-export const STALL_TIMEOUT_S = 20;
+// U1: real micro-terrain (small craters near the Lunokhod 2 site, see
+// plans/260923-2234-tycho-rover/reports/lunokhod-data.md) can force a safe
+// route to detour away from the goal in straight-line terms for over a
+// minute while still making real progress along the ground - a 20s window
+// (the pre-Lunokhod value) false-stalled a bot driving the real safe route
+// there (measured plateau: 62.9s of rover-time). 75s covers that with
+// margin and only makes every level's stall check MORE lenient, never less.
+export const STALL_TIMEOUT_S = 75;
 export const STALL_PROGRESS_EPS_M = 0.5;
 
 export const BRIEFS = {
-  moon: [
-    "LUNOKHOD - MOON, TYCHO CENTRAL PEAK",
+  lunokhod: [
+    "LUNOKHOD - MOON, LE MONNIER CRATER",
     "One-way delay 1.28 s: close enough to steer live, like the 1970s Soviet crews did.",
-    "Reach the high-point marker near the top of Tycho's central peak, without exceeding the slope limit or stalling out.",
+    "Drive to where Lunokhod 2 has been parked since 1973, without exceeding the slope limit or stalling out.",
+  ],
+  tycho: [
+    "TYCHO - MOON, TYCHO CENTRAL PEAK",
+    "One-way delay 1.28 s: close enough to steer live, like the 1970s Soviet crews did.",
+    "Steep real terrain: a short climb to the high point, without exceeding the slope limit or stalling out.",
   ],
   mars: [
     "JEZERO - MARS SOL PLAN",
@@ -119,7 +131,15 @@ export function whatHappenedLine(mission) {
   const avg = averageDelaySec(mission).toFixed(1);
   switch (mission.outcome) {
     case "arrived":
+      if (mission.level === "mars") {
+        return `TYCHO's co-pilot drove the plan you set, landing on target after ${avg} s of telemetry delay each way. You planned the route and guardrails; the co-pilot did the driving.`;
+      }
+      if (mission.level === "lunokhod") {
+        return "You reached Lunokhod 2. It has been parked here since 1973.";
+      }
       return `You steered ${avg} s into the past on average, and TYCHO still made it.`;
+    case "abandoned":
+      return "Run abandoned before it finished; not counted toward the success rate.";
     case "tipped":
       return "The slope under TYCHO exceeded the limit before the order to stop could arrive; the rover tipped.";
     case "stalled":

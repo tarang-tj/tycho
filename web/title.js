@@ -4,11 +4,12 @@
 // open, cinematic intro when it closes. Also mirrors the active level onto
 // <html data-body> so CSS can switch the accent colour per body.
 import { isOpen as isAboutOpen } from "./about-data-panel.js";
+import { LEVEL_ORDER } from "./levels.js";
 
 const screen = document.getElementById("title-screen");
 const cards = [...document.querySelectorAll(".level-card")];
 const startBtn = document.getElementById("titleStart");
-let selected = "moon";
+let selected = LEVEL_ORDER[0];
 
 function select(level) {
   selected = level;
@@ -36,7 +37,11 @@ window.addEventListener("keydown", (event) => {
   if (!document.body.classList.contains("title-open")) return;
   if (isAboutOpen()) return; // L6: don't let Enter start the game underneath the About dialog
   if (event.key === "Enter") { event.preventDefault(); start(); }
-  if (event.key === "ArrowRight" || event.key === "ArrowLeft") select(selected === "moon" ? "mars" : "moon");
+  if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+    const i = LEVEL_ORDER.indexOf(selected);
+    const dir = event.key === "ArrowRight" ? 1 : -1;
+    select(LEVEL_ORDER[(i + dir + LEVEL_ORDER.length) % LEVEL_ORDER.length]);
+  }
 });
 
 // Keep the accent in sync when the level changes from the top bar.
@@ -45,4 +50,4 @@ const syncBody = () => {
   if (active && !document.body.classList.contains("title-open")) document.documentElement.dataset.body = active.dataset.level;
 };
 new MutationObserver(syncBody).observe(document.querySelector(".level-select"), { subtree: true, attributes: true, attributeFilter: ["aria-pressed"] });
-select("moon");
+select(LEVEL_ORDER[0]);

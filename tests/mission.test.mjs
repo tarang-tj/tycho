@@ -111,3 +111,26 @@ test("averageDelaySec and whatHappenedLine reflect accumulated telemetry age", (
   assert.equal(m.status, "won");
   assert.match(whatHappenedLine(m), /3\.0 s/);
 });
+
+// --- U2/U1: outcome wording must credit the right actor -----------------
+
+test("U2: a Mars arrival credits the co-pilot's driving, not the player's steering", () => {
+  let m = startMission(createMission("mars"), 0);
+  m = updateMission(m, { visibleTelemetry: telem(100 - GOAL_RADIUS_M + 1, 0, 1, { planActive: true }), simTime: 1, terrain: TERRAIN });
+  assert.equal(m.status, "won");
+  const line = whatHappenedLine(m);
+  assert.match(line, /co-pilot/i);
+  assert.doesNotMatch(line, /you steered/i);
+});
+
+test("U1: a Lunokhod arrival states the true parked-since fact, nothing more", () => {
+  let m = startMission(createMission("lunokhod"), 0);
+  m = updateMission(m, { visibleTelemetry: telem(100 - GOAL_RADIUS_M + 1, 0, 1), simTime: 1, terrain: TERRAIN });
+  assert.equal(m.status, "won");
+  assert.equal(whatHappenedLine(m), "You reached Lunokhod 2. It has been parked here since 1973.");
+});
+
+test("U2: an abandoned outcome has an honest, non-blaming line", () => {
+  const m = { ...startMission(createMission("mars"), 0), outcome: "abandoned" };
+  assert.match(whatHappenedLine(m), /abandoned/i);
+});
