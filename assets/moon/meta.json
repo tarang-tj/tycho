@@ -1,0 +1,28 @@
+{
+  "width": 1024,
+  "height": 1024,
+  "metersPerPixel": 2.343750000000703,
+  "minElev": -2839.374755859375,
+  "maxElev": -981.9688720703125,
+  "heightScale": 1857.4058837890625,
+  "sizeKm": 2.4,
+  "spawn": {
+    "x": 214,
+    "y": 633
+  },
+  "goal": {
+    "x": 128,
+    "y": 793
+  },
+  "source": {
+    "product": "NAC_DTM_TYCHOPK01",
+    "url": "https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_DTM_TYCHOPK01",
+    "download": "http://lroc.sese.asu.edu/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/SDP/NAC_DTM/TYCHOPK01/NAC_DTM_TYCHOPK01.TIF"
+  },
+  "license": "LROC Reduced Data Record (RDR) products available through the NASA Planetary Data System (PDS) are in the public domain.",
+  "credit": "NASA/GSFC/Arizona State University",
+  "nodataFilledFraction": 0.041,
+  "notes": "Shaded rendering of real LRO NAC DTM elevation (not a photo). Crop is a 2.4km square placed to minimize nodata while containing the DTM's highest well-supported pixel (>=60m from any stereo-correlation gap), resampled to 1024x1024. Spawn is the lowest-slope point within 300-1000m of the summit. mask.bin marks nodata-filled cells (rendered as a hatched no-data texture in albedo.jpg/preview.png); spawn and goal are kept >= 20px clear of them. spawn relocated from (65,628) to (214,633) -- original was within 20px of a nodata-filled cell; picked the lowest-slope real-data cell satisfying the clearance instead.",
+  "maskFile": "mask.bin",
+  "maskMeaning": "1 = no orbital data (filled), treat as impassable"
+}
