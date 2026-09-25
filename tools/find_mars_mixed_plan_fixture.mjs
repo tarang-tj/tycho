@@ -7,7 +7,7 @@
 // No randomness: candidates come from a fixed, printed generation order, so
 // re-running always finds the same plan. Finishes in well under 5 minutes
 // (each candidate costs 2-3 ensemble(N=20) calls, ~70-200ms each on this
-// DEM; measured this session at ~30 candidates total).
+// DEM; it accepts the first qualifying candidate, measured at candidate 8 in about 2 s).
 //
 // Accepts the FIRST candidate satisfying all three:
 //   (1) not HELD under DEFAULT_GUARDRAILS - a plan a player could actually

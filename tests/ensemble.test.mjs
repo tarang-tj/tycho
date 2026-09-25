@@ -129,45 +129,37 @@ marsTest(
   },
 );
 
-// This route is NOT the mars-mixed-plan.json fixture: it is a second,
-// independently found candidate (same search tool, same bounded space as
-// tools/find_mars_mixed_plan_fixture.mjs: k=3 waypoints evenly sampled from
-// the spawn->goal A* route, threaded through the same real ~23deg-class
-// cell (447,427) that the fixture uses). Re-running that tool's candidate
-// #8-equivalent path for k=3 (see its printed [n] log) reproduces it. The
-// dynamic k=4 route this test used against the old driftPct=3 model ties
-// all 3 presets at 20% predicted arrival there under DRIFT_PCT=1, so no
-// preset stands out as "the" pick; this route breaks that tie honestly
-// (loose/default predict 40%, tight predicts 0%; loose sorts first on the
-// tie so it is picked) and its real seed 0 run genuinely arrives - not
-// cherry-picked, measured once and reported below, predicted vs actual.
-marsTest("(e) a guardrail-picker bot choosing from 3 presets by ensemble()-predicted arrival rate arrives on the real run (seed 0)", () => {
+// The picker bot uses the committed mars-mixed-plan.json route, not a route
+// chosen for its outcome. It sees ONLY ensemble() summaries. Its choice is
+// then checked on HELD-OUT seeds (baseSeed 1000) it never saw, instead of on
+// one hand-picked seed. Note: "loose" (31 deg, stop) and "default" (25 deg,
+// reroute) produce identical counts on this route (measured), so which of
+// the two is picked is decided by list order, and the test does not claim
+// the ensemble tells them apart. What it does tell apart is "tight": 18 deg
+// holds this plan at plan time on every seed.
+marsTest("(e) a guardrail-picker bot choosing by ensemble()-predicted arrival rate picks a best-predicted preset, and its held-out arrival rate beats the worst preset", () => {
+  const fixture = loadFixture();
   const terrain = loadRealMarsTerrain();
-  const { spawn } = terrain.meta;
-  const waypoints = [{ x: 488, y: 488 }, { x: 474, y: 466 }, { x: 447, y: 427 }, { x: 455, y: 441 }];
-
+  const { spawn, waypoints } = fixture;
   const presets = [
     { name: "loose", guardrails: { ...DEFAULT_GUARDRAILS, maxSlopeDeg: 31, hazardMode: "stop" } },
     { name: "default", guardrails: DEFAULT_GUARDRAILS },
     { name: "tight", guardrails: { ...DEFAULT_GUARDRAILS, maxSlopeDeg: 18, hazardMode: "reroute" } },
   ];
+  const predicted = presets.map((preset) => ({
+    preset,
+    summary: ensemble({ terrain, spawn, waypoints, guardrails: preset.guardrails, N: 20, baseSeed: 0, driftPct: DRIFT_PCT }),
+  }));
+  const bestRate = Math.max(...predicted.map((p) => p.summary.arrivalRate));
+  const best = predicted.find((p) => p.summary.arrivalRate === bestRate);
+  const worst = predicted.reduce((a, b) => (b.summary.arrivalRate < a.summary.arrivalRate ? b : a));
+  assert.ok(bestRate > worst.summary.arrivalRate, "the presets must not all tie, or the picker has nothing to choose");
 
-  // The picker bot sees ONLY ensemble() summaries (arrivalRate), never the
-  // true per-seed path or terrain directly. Ties keep the earlier preset
-  // (first-in-list wins), matching the measured "loose" pick documented
-  // above.
-  let best = null;
-  for (const preset of presets) {
-    const summary = ensemble({ terrain, spawn, waypoints, guardrails: preset.guardrails, N: 20, baseSeed: 0, driftPct: DRIFT_PCT });
-    if (!best || summary.arrivalRate > best.summary.arrivalRate) best = { preset, summary };
-  }
-  assert.ok(best, "picker must choose a preset");
-  assert.equal(best.preset.name, "loose", `expected the measured tie-break to pick "loose", got "${best.preset.name}" (predicted arrivalRate ${best.summary.arrivalRate}) - re-measure and update this test's documented route/expectation if the model or route changes`);
-
-  const real = runSolPlan({ terrain, spawn, waypoints, guardrails: best.preset.guardrails, seed: 0, driftPct: DRIFT_PCT });
-  // Honest report: predicted vs actual, not asserted from memory.
-  console.log(`  [picker] chose "${best.preset.name}" (predicted arrivalRate ${best.summary.arrivalRate}); real seed 0 outcome: ${real.outcome}`);
-  assert.equal(real.outcome, "arrived", `picked preset "${best.preset.name}" (predicted arrivalRate ${best.summary.arrivalRate}) failed to arrive for seed 0`);
+  const heldOut = (preset) => ensemble({ terrain, spawn, waypoints, guardrails: preset.guardrails, N: 20, baseSeed: 1000, driftPct: DRIFT_PCT });
+  const bestHeld = heldOut(best.preset);
+  const worstHeld = heldOut(worst.preset);
+  console.log(`  [picker] chose "${best.preset.name}": predicted ${best.summary.arrivalRate} ${JSON.stringify(best.summary.wilson95)}, held-out ${bestHeld.arrivalRate}; worst "${worst.preset.name}" predicted ${worst.summary.arrivalRate}, held-out ${worstHeld.arrivalRate}`);
+  assert.ok(bestHeld.arrivalRate > worstHeld.arrivalRate, `held-out: picked "${best.preset.name}" (${bestHeld.arrivalRate}) should beat "${worst.preset.name}" (${worstHeld.arrivalRate})`);
 });
 
 marsTest("(f) ensemble({N:20}) completes in under 5s in node", () => {

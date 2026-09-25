@@ -1,8 +1,8 @@
-// Pure headless sol-plan simulator for Flight Rules. Extracts the SAME
-// autopilot loop main.js's tickPhysics runs for a delivered Mars "plan"
-// command (steerTowardPoint/stepRover under planRoute's guardrails, with
-// mission.js's hold/tip/stall rules) into a reusable, testable shape:
-// `autopilotStep` advances one tick exactly like main.js will, and
+// Pure headless sol-plan simulator for Flight Rules. Follows the autopilot
+// loop main.js's tickPhysics runs for a delivered Mars "plan" command
+// (steerTowardPoint/stepRover under planRoute's guardrails, with mission.js's
+// hold/tip/stall rules), with the differences listed in autopilotStep's
+// JSDoc: `autopilotStep` advances one tick, and
 // `runSolPlan` drives a whole sol headlessly for ensemble.js. No DOM/
 // three.js dependency, deterministic, unit-testable in node.
 //
