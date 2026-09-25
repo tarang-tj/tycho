@@ -87,9 +87,16 @@ function successRate(runs) {
  * abandoned-excluded set already computed by the caller). `actualRate` is
  * the arrival rate WITHIN that predicted-run subset, so it is directly
  * comparable to `meanPredicted` - not the level's overall success rate.
+ *
+ * `recordRun` already validates `predictedArrival` into [0,1] before
+ * storing, but localStorage is player-editable, so tampered/pre-validation
+ * records with an out-of-range value are ignored here too rather than
+ * skewing `meanPredicted`/`actualRate`.
  */
 function calibration(runs) {
-  const predicted = runs.filter((r) => typeof r.predictedArrival === "number");
+  const predicted = runs.filter((r) =>
+    typeof r.predictedArrival === "number" && !Number.isNaN(r.predictedArrival) &&
+    r.predictedArrival >= 0 && r.predictedArrival <= 1);
   const nPredicted = predicted.length;
   const meanPredicted = nPredicted ? predicted.reduce((sum, r) => sum + r.predictedArrival, 0) / nPredicted : null;
   const actualRate = nPredicted ? successRate(predicted) : null;

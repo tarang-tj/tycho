@@ -8,11 +8,18 @@
 // foreknowledge. Re-measured this session (levelup v3 wave 2); see
 // tests/par.test.mjs, which re-runs the same bot loop shape against the real
 // shipped assets and asserts these numbers stay within 10% of that run.
+//
+// Each value is the bot's measured arrival time ROUNDED DOWN to the nearest
+// whole second (measured to 0.05s: lunokhod 1681.6, change4 1696.3,
+// apollo17 1199.0, tycho 826.4). Rounding down means par never exceeds the
+// bot's own time, so the bot can never "beat" its own par (par.test.mjs
+// asserts PAR_SEC[level] <= the bot's measured time) - only makes the
+// strictly-less-than beat-par bar a hair harder, never easier.
 export const PAR_SEC = {
-  lunokhod: 1681.6,
-  change4: 1696.3,
-  apollo17: 1199.0,
-  tycho: 826.4,
+  lunokhod: 1681,
+  change4: 1696,
+  apollo17: 1199,
+  tycho: 826,
 };
 
 // Max-slope objective threshold, degrees. Every value sits below rover-sim's

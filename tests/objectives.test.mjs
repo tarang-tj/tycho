@@ -48,6 +48,16 @@ for (const levelKey of ["lunokhod", "change4", "apollo17", "tycho"]) {
     assert.equal(objectives.find((o) => o.id === "gentle-line").met, false);
   });
 
+  // Documents the intended behavior for a run summary missing maxSlopeDeg
+  // (e.g. an older caller that never tracked it): treated as "unknown, so
+  // don't reward it" rather than defaulting to met (web/objectives.js
+  // slopeObjective's `?? Infinity`).
+  test(`${levelKey}: gentle-line objective is NOT met when maxSlopeDeg is absent from the run summary`, () => {
+    const objectives = evaluateObjectives(levelKey, { outcome: "arrived", timeSec: 1, distanceM: 1 });
+    assert.equal(objectives.find((o) => o.id === "gentle-line").met, false,
+      `${levelKey}: missing slope data must not earn the slope objective`);
+  });
+
   test(`${levelKey}: labels are plain text with no em dashes`, () => {
     const objectives = evaluateObjectives(levelKey, { outcome: "arrived", timeSec: 1, maxSlopeDeg: 1, distanceM: 1 });
     for (const o of objectives) assert.ok(!o.label.includes("—"), `${levelKey}: "${o.label}" contains an em dash`);

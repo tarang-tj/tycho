@@ -88,7 +88,7 @@ function runPursuitBot(level) {
   }
   assert.equal(mission.status, "won", `${level.key} par bot failed to reach the goal within ${BUDGET_S}s`);
   assert.equal(mission.outcome, "arrived");
-  return { timeSec: simTime, maxSlopeDeg: maxSlopeEncountered, distanceM: mission.distanceTraveledM };
+  return { outcome: mission.outcome, timeSec: simTime, maxSlopeDeg: maxSlopeEncountered, distanceM: mission.distanceTraveledM };
 }
 
 /** Single-target-at-a-time delayed-telemetry bot (same shape as playability.test.mjs's "moon"/Tycho bot). */
@@ -133,7 +133,7 @@ function runWaypointIndexBot(level) {
   }
   assert.equal(mission.status, "won", `${level.key} par bot failed to reach the goal within ${BUDGET_S}s`);
   assert.equal(mission.outcome, "arrived");
-  return { timeSec: simTime, maxSlopeDeg: maxSlopeEncountered, distanceM: mission.distanceTraveledM };
+  return { outcome: mission.outcome, timeSec: simTime, maxSlopeDeg: maxSlopeEncountered, distanceM: mission.distanceTraveledM };
 }
 
 // tycho reuses the "moon" test's single-target bot shape (playability.test.mjs's
@@ -147,23 +147,35 @@ const BOT_RUNNERS = {
 };
 
 for (const levelKey of Object.keys(PAR_SEC)) {
+  const runner = BOT_RUNNERS[levelKey];
+  const level = LEVELS[levelKey];
+  // Memoized so both tests below share one real bot run instead of paying
+  // for the (expensive, minutes-long) simulation twice per level.
+  let cachedRun = null;
+  function getRun() {
+    if (!cachedRun) cachedRun = runner(level);
+    return cachedRun;
+  }
+
   test(`par.${levelKey}: PAR_SEC is within 10% of the bot's actual measured arrival time`, () => {
-    const runner = BOT_RUNNERS[levelKey];
-    const { timeSec } = runner(LEVELS[levelKey]);
+    const { timeSec } = getRun();
     const par = PAR_SEC[levelKey];
     const deviation = Math.abs(timeSec - par) / timeSec;
     assert.ok(deviation <= PAR_TOLERANCE,
       `${levelKey}: PAR_SEC=${par}s is ${(deviation * 100).toFixed(1)}% off the measured ${timeSec.toFixed(1)}s (tolerance ${PAR_TOLERANCE * 100}%)`);
   });
 
-  test(`par.${levelKey}: the bot's own run meets "arrive" but NOT "beat par" (par equals its own time -> tie, not a beat)`, () => {
-    // PAR_SEC[levelKey] IS the bot's own measured time (the test above
-    // proves that within tolerance), so feeding it back in as timeSec
-    // simulates "a run that exactly matches the bot".
-    const runSummary = { outcome: "arrived", timeSec: PAR_SEC[levelKey], maxSlopeDeg: 0, distanceM: 1 };
-    const objectives = evaluateObjectives(levelKey, runSummary);
+  test(`par.${levelKey}: the bot's own real run meets "arrive" but NOT "beat par", and PAR_SEC never exceeds it`, () => {
+    // Feed the REAL measured run (not PAR_SEC echoed back) into
+    // evaluateObjectives, so this proves the actual objectives.js logic
+    // against the actual bot output rather than a synthetic stand-in.
+    const run = getRun();
+    assert.ok(PAR_SEC[levelKey] <= run.timeSec,
+      `${levelKey}: PAR_SEC=${PAR_SEC[levelKey]}s must not exceed the bot's own measured ${run.timeSec.toFixed(1)}s ` +
+      "(otherwise the bot could beat its own par)");
+    const objectives = evaluateObjectives(levelKey, run);
     assert.equal(objectives.find((o) => o.id === "arrive").met, true);
     assert.equal(objectives.find((o) => o.id === "beat-par").met, false,
-      `${levelKey}: a run at exactly PAR_SEC must not meet beat-par (strictly-less-than rule)`);
+      `${levelKey}: the bot's own run must not meet beat-par (par is derived from this exact run, rounded down)`);
   });
 }
