@@ -50,7 +50,12 @@ export function saveScoreboard(data) {
 
 /**
  * Append a run to a level's history and return the new data object (does
- * not mutate the input). `run`: { outcome, timeSec, distanceM, copilotOn }.
+ * not mutate the input). `run`: { outcome, timeSec, distanceM, copilotOn,
+ * predictedArrival?, medals? }. `predictedArrival` (0..1, the dry-run
+ * ensemble's arrival rate at uplink time) and `medals` (string[]) are both
+ * optional and validated at this boundary: an out-of-range or wrong-typed
+ * value is dropped rather than stored, so a caller bug can't corrupt a
+ * player's saved history.
  */
 export function recordRun(data, levelKey, run) {
   // Tolerate tampered/corrupt storage (e.g. `{"moon":5}`): only spread a
@@ -58,7 +63,15 @@ export function recordRun(data, levelKey, run) {
   // render-loop exception here would otherwise freeze the whole game.
   const existing = data[levelKey];
   const runs = Array.isArray(existing) ? [...existing] : [];
-  runs.push({ ...run, at: Date.now() });
+  const entry = { ...run, at: Date.now() };
+  if (typeof entry.predictedArrival !== "number" || Number.isNaN(entry.predictedArrival) ||
+      entry.predictedArrival < 0 || entry.predictedArrival > 1) {
+    delete entry.predictedArrival;
+  }
+  if (!Array.isArray(entry.medals) || !entry.medals.every((m) => typeof m === "string")) {
+    delete entry.medals;
+  }
+  runs.push(entry);
   return { ...data, [levelKey]: runs };
 }
 
@@ -69,10 +82,26 @@ function successRate(runs) {
 }
 
 /**
- * Aggregate stats for a level: overall + co-pilot on/off success rates.
- * "abandoned" runs (level switched or retried mid-run, never reaching a real
- * outcome) are recorded but excluded from every success-rate denominator -
- * a run the player walked away from is not a failure the rover caused.
+ * Calibration: predicted vs actual arrival rate over runs that carried a
+ * dry-run `predictedArrival` (0..1) at uplink time. Only over `runs` (the
+ * abandoned-excluded set already computed by the caller). `actualRate` is
+ * the arrival rate WITHIN that predicted-run subset, so it is directly
+ * comparable to `meanPredicted` - not the level's overall success rate.
+ */
+function calibration(runs) {
+  const predicted = runs.filter((r) => typeof r.predictedArrival === "number");
+  const nPredicted = predicted.length;
+  const meanPredicted = nPredicted ? predicted.reduce((sum, r) => sum + r.predictedArrival, 0) / nPredicted : null;
+  const actualRate = nPredicted ? successRate(predicted) : null;
+  return { nPredicted, meanPredicted, actualRate, note: sampleSizeNote(nPredicted) };
+}
+
+/**
+ * Aggregate stats for a level: overall + co-pilot on/off success rates, plus
+ * predicted-vs-actual calibration. "abandoned" runs (level switched or
+ * retried mid-run, never reaching a real outcome) are recorded but excluded
+ * from every rate denominator, including calibration - a run the player
+ * walked away from is not a failure the rover caused.
  */
 export function aggregate(data, levelKey) {
   const allRuns = data[levelKey] || [];
@@ -89,6 +118,7 @@ export function aggregate(data, levelKey) {
     successRateWithout: successRate(withoutCopilot),
     nWith: withCopilot.length,
     nWithout: withoutCopilot.length,
+    calibration: calibration(runs),
   };
 }
 
