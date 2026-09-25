@@ -3,12 +3,12 @@
   "height": 1024,
   "metersPerPixel": 4.9999999999999,
   "minElev": -5976.6806640625,
-  "maxElev": -5897.16552734375,
-  "heightScale": 79.51513671875,
+  "maxElev": -5905.43701171875,
+  "heightScale": 71.24365234375,
   "sizeKm": 5.12,
   "spawn": {
-    "x": 218,
-    "y": 575
+    "x": 40,
+    "y": 349
   },
   "goal": {
     "x": 512,
@@ -18,29 +18,30 @@
     "product": "NAC_DTM_CHANGE4",
     "url": "https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_DTM_CHANGE4",
     "download": "http://lroc.sese.asu.edu/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/SDP/NAC_DTM/CHANGE4/NAC_DTM_CHANGE4.TIF",
-    "factsSource": "Liu, B. et al. 2019, \"Descent trajectory reconstruction and landing site positioning of Chang'E-4 on the lunar farside\", Nature Communications 10:4229, https://pmc.ncbi.nlm.nih.gov/articles/PMC6760200/"
+    "factsSource": "LROC post 1087, \"Chang'e 4 Lander Coordinates\" (lander position, LRO frame), https://lroc.im-ldi.com/posts/1087; Liu, B. et al. 2019, \"Descent trajectory reconstruction and landing site positioning of Chang'E-4 on the lunar farside\" (landing date and cross-check position), Nature Communications 10:4229, https://pmc.ncbi.nlm.nih.gov/articles/PMC6760200/"
   },
   "license": "LROC Reduced Data Record (RDR) products available through the NASA Planetary Data System (PDS) are in the public domain.",
   "credit": "NASA/GSFC/Arizona State University",
   "nodataFilledFraction": 0.0,
-  "notes": "Shaded rendering of real LRO NAC DTM elevation (not a photo). Crop is a 5.12km square at native 5 m/px, centered on the pixel of the Chang'e-4 lander (a surveyed coordinate from Liu et al. 2019 Nature Communications, not a proxy). Goal is the lander (\"Chang'e-4 lander (landed 2019)\"); spawn is the point 1.5-3km away whose straight drivable line to the lander has the lowest max slope, searched across all compass bearings (no sourced approach direction exists for this landing, unlike Lunokhod 2, so a bearing is not fabricated -- the algorithmically best-drivable direction is used instead). mask.bin marks nodata-filled cells (rendered as a hatched no-data texture in albedo.jpg/preview.png); spawn and goal are kept >= 20px clear of them. delayModel gives an honest but simplified one-way relay light-time estimate for the Earth->Queqiao->farside link (see tools/sites/relay.py for the sourced inputs and stated approximation).",
+  "notes": "Shaded rendering of real LRO NAC DTM elevation (not a photo). Crop is a 5.12km square at native 5 m/px, centered on the pixel of the Chang'e-4 lander (a surveyed coordinate, not a proxy). Goal uses LROC post 1087's LRO-frame coordinate (45.457 S, 177.589 E, +/-20 m), which matches this DTM's own frame; Liu et al. 2019 Nature Communications report an LRO-frame value (45.4561 S, 177.5885 E) that agrees within ~20 m. Liu et al.'s other (CE2TMap2015-frame) coordinate (45.4446 S, 177.5991 E) is a different frame and is deliberately not used here: it would place the goal about 415 m from the real lander in this LRO-frame DTM. Goal is the lander (\"Chang'e-4 lander (landed 2019)\"); spawn is the point 1.5-3km away whose straight drivable line to the lander has the lowest max slope, searched across all compass bearings (no sourced approach direction exists for this landing, unlike Lunokhod 2, so a bearing is not fabricated -- the algorithmically best-drivable direction is used instead). mask.bin marks nodata-filled cells (rendered as a hatched no-data texture in albedo.jpg/preview.png); spawn and goal are kept >= 20px clear of them. delayModel gives an honest but simplified one-way relay light-time estimate for the Earth->Queqiao->farside link (see tools/sites/relay.py for the sourced inputs and stated approximation).",
   "maskFile": "mask.bin",
   "maskMeaning": "1 = no orbital data (filled), treat as impassable",
   "siteName": "Von Karman crater, Chang'e-4 landing site",
   "goalLabel": "Chang'e-4 lander (landed 2019)",
   "goalLatLon": {
-    "lat": -45.4446,
-    "lon": 177.5991
+    "lat": -45.457,
+    "lon": 177.589
   },
+  "goalLatLonNote": "LRO frame, LROC post 1087 (https://lroc.im-ldi.com/posts/1087), +/-20 m; agrees within ~20 m with Liu et al. 2019's own LRO-frame value (-45.4561, 177.5885). Liu et al.'s CE2TMap2015-frame value (-45.4446, 177.5991) is a different frame, not used as the goal here: it would misplace the goal ~415 m in this LRO-frame DTM (Liu et al. state the 415 m deviation directly).",
   "spawnLatLon": {
-    "lat": -45.45507,
-    "lon": 177.52987
+    "lat": -45.43017,
+    "lon": 177.47788
   },
   "landingDate": "3 January 2019",
-  "landerElevCitedM": -5935.0,
-  "spawnGoalDistanceM": 1503.4,
-  "lineSlopeDegMax": 8.52,
-  "lineSlopeDegMean": 1.87,
+  "landerElevCitedM": -5927.0,
+  "spawnGoalDistanceM": 2496.8,
+  "lineSlopeDegMax": 6.69,
+  "lineSlopeDegMean": 1.94,
   "delayModel": {
     "type": "relay",
     "oneWaySec": 1.71,
@@ -51,8 +52,9 @@
     ],
     "sources": [
       "NASA Moon Fact Sheet (Earth-Moon 384400 km, Moon radius 1737.4 km), https://nssdc.gsfc.nasa.gov/planetary/factsheet/moonfact.html",
-      "The Planetary Society, \"How China's lunar relay satellite arrived in its final orbit\" (Queqiao ~65000 km beyond the Moon at L2), https://www.planetary.org/articles/20180615-queqiao-orbit-explainer"
+      "The Planetary Society, \"How China's lunar relay satellite arrived in its final orbit\" (Queqiao ~65000 km beyond the Moon at L2), https://www.planetary.org/articles/20180615-queqiao-orbit-explainer",
+      "\"Development and Prospect of Chinese Lunar Relay Communication Satellite\", Space: Science & Technology 2021 (Queqiao's halo-orbit Z-amplitude ~13000 km, distance to the Moon 47000-79000 km), https://spj.science.org/doi/10.34133/2021/3471608"
     ],
-    "caveat": "Simplified collinear model, not a precise ephemeris; Queqiao's real halo orbit varies roughly 47000-79000 km from the Moon, and the lander is not exactly at the sub-L2 point. See tools/sites/relay.py docstring."
+    "caveat": "Simplified collinear model, not a precise ephemeris; Queqiao's real halo orbit varies roughly 47000-79000 km from the Moon (Space: Science & Technology 2021), and the lander is not exactly at the sub-L2 point (about 1400 km away, ~2 ms effect on the delay). See tools/sites/relay.py docstring."
   }
 }

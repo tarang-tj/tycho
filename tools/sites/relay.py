@@ -10,18 +10,28 @@ Sourced numbers (fetched 2026-09-24):
   (https://www.planetary.org/articles/20180615-queqiao-orbit-explainer).
 - Moon mean radius 1,737.4 km: NASA "Moon Fact Sheet" (same source as above).
 
+- Queqiao's halo-orbit Z-amplitude (~13,000 km) and its 47,000-79,000 km
+  range of distance from the Moon: "Development and Prospect of Chinese
+  Lunar Relay Communication Satellite", Space: Science & Technology 2021
+  (https://spj.science.org/doi/10.34133/2021/3471608). These figures are
+  NOT in the Planetary Society source above, which only states the nominal
+  ~65,000 km distance; they are cited to this SPJ 2021 paper instead.
+
 CAUTION: this is a deliberately simple, labelled-approximate model, not a
 precise ephemeris. L2 sits on the extended Earth-Moon line, so leg 1 (Earth
 to Queqiao) is modeled as earth_moon_km + queqiao_beyond_moon_km (exact for
 a satellite exactly on that line; Queqiao's real halo orbit has an
-amplitude up to ~13,000 km off that line per the same Planetary Society
-source, so treat this as a nominal figure, not a guaranteed line-of-sight
-distance). Leg 2 (Queqiao to a far-side lander near the sub-L2 point) is
-modeled as queqiao_beyond_moon_km - moon_radius_km, i.e. the straight-line
-distance from Queqiao to the near edge of the Moon facing away from Earth;
-Chang'e-4's Von Karman crater site is within a few hundred km of that
-sub-L2 point, not exactly on it, so this under-states leg 2 by a small,
-unquantified amount that is dominated by the halo-orbit uncertainty above.
+amplitude up to ~13,000 km off that line per the SPJ 2021 source above, so
+treat this as a nominal figure, not a guaranteed line-of-sight distance).
+Leg 2 (Queqiao to a far-side lander near the sub-L2 point) is modeled as
+queqiao_beyond_moon_km - moon_radius_km, i.e. the straight-line distance
+from Queqiao to the near edge of the Moon facing away from Earth;
+Chang'e-4's Von Karman crater site (45.457S, 177.589E) is about 1,400 km of
+arc from the sub-L2 point (0deg, 180deg), not exactly on it. The extra
+leg-2 distance this actually costs is small: the true leg-2 distance from
+that offset is about 63,790 km against the modeled 63,263 km, roughly +1.8
+ms one way -- well inside the halo-orbit uncertainty above, and dominated
+by it.
 """
 from __future__ import annotations
 
