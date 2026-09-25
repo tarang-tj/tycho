@@ -379,10 +379,16 @@ try {
   }
 
   // Finding 1: press Dry run, then retry BEFORE that dry run resolves. The
-  // in-flight summary must never apply to the NEW run's own uplink.
+  // in-flight summary must never apply to the NEW run's own uplink. The old
+  // run's plan (waypoint + cap) is made IDENTICAL to what the new run below
+  // uplinks, so the finding-2 signature check can never block the leak on
+  // its own - only the epoch guard can. (Without this, an earlier version
+  // of this check passed even with the epoch guard removed: see the
+  // W2 re-review's new_issues #1.)
   await page.evaluate(() => window.TYCHO.debug.startMission("close"));
   await page.waitForSelector(".mission-minimap", { state: "visible" });
   await placeMarsWaypoint(476, 476);
+  await setTinyDistanceCap();
   await page.waitForFunction(() => !document.querySelector(".mission-dry-run-btn")?.disabled, null, { timeout: 5000 });
   await page.click(".mission-dry-run-btn"); // fires an async dry run; deliberately NOT awaited
 
@@ -391,9 +397,9 @@ try {
   // Give the STALE dry run (started on the run this replaced) time to
   // actually resolve before this run uplinks - the leak only shows up once
   // that old promise's `.then` has fired, which without the epoch guard
-  // overwrites whatever this run's own reset already cleared. 100 sols
-  // over the real Mars DEM finished well under this in every run observed
-  // proving the Dry run block above.
+  // overwrites whatever this run's own reset already cleared. Even a
+  // cap-20 (fast plan-time HOLD) dry run's full 100-seed ensemble finished
+  // well under this in every run observed proving the Dry run block above.
   await page.waitForTimeout(6000);
   await placeMarsWaypoint(476, 476);
   await setTinyDistanceCap();
@@ -431,6 +437,22 @@ try {
   predicted = await page.evaluate(() => !!document.querySelector(".mission-endcard-predicted"));
   assert.equal(predicted, false, "a dry-run summary computed against a DIFFERENT (earlier) plan was credited to the uplinked plan (review finding 2)");
   console.log("Mars: changing the plan after a completed dry run correctly dropped the stale prediction.");
+
+  // Panel-visible sibling of finding 2 (W2 re-review new_issues #2): a dry
+  // run still IN FLIGHT (not yet resolved) when the player edits the plan
+  // must not re-show its result for the edited plan once it resolves. The
+  // end card is already proven safe by the signature check above; this
+  // checks the on-screen panel specifically.
+  await page.evaluate(() => window.TYCHO.debug.startMission("close"));
+  await page.waitForSelector(".mission-minimap", { state: "visible" });
+  await placeMarsWaypoint(476, 476);
+  await page.waitForFunction(() => !document.querySelector(".mission-dry-run-btn")?.disabled, null, { timeout: 5000 });
+  await page.click(".mission-dry-run-btn"); // fires an async dry run; deliberately NOT awaited
+  await placeMarsWaypoint(447, 427); // edit the plan WHILE that dry run is still in flight
+  await page.waitForTimeout(6000); // let the stale run's .then fire
+  const panelHiddenAfterEdit = await page.evaluate(() => !!document.querySelector(".mission-dry-run-result")?.hidden);
+  assert.ok(panelHiddenAfterEdit, "a dry run still in flight when the plan was edited re-showed its (now stale) result panel after resolving");
+  console.log("Mars: a dry run edited mid-flight never re-showed a stale result panel.");
 
   // Restore the title-open state this block removed (real-DOM-only, see
   // above) so every level switch below still gets its normal first-paint

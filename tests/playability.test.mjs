@@ -7,8 +7,9 @@
 // each way) and steers toward the goal along a precomputed safe route,
 // exactly as a live player would steer against what they last saw.
 // Mars: a 2-4 waypoint sol plan uplinked (through the real compressed
-// delay) and driven autonomously by the co-pilot (copilot.js's planRoute),
-// exactly as main.js drives a delivered "plan" command.
+// delay) and driven autonomously by the co-pilot (mars-run.js's
+// createMarsAutopilot + sol-sim.js's autopilotStep), exactly as main.js
+// drives a delivered "plan" command.
 //
 // Deterministic, fixed-dt, no wall-clock reads: fast and reproducible.
 import { test } from "node:test";
@@ -18,11 +19,11 @@ import { fileURLToPath } from "node:url";
 import { parseTerrain } from "../web/terrain-data.js";
 import { createRover, stepRover, steerTowardPoint } from "../web/rover-sim.js";
 import { createSignalLink } from "../web/signal.js";
-import { planRoute, DEFAULT_GUARDRAILS } from "../web/copilot.js";
+import { DEFAULT_GUARDRAILS } from "../web/copilot.js";
 import { autopilotStep } from "../web/sol-sim.js";
 import { createMarsAutopilot } from "../web/mars-run.js";
 import { createMission, startMission, updateMission, whatHappenedLine } from "../web/mission.js";
-import { LEVELS, LEVEL_ORDER, MARS_SCENARIOS, resolveDelaySec, resolveScenario } from "../web/levels.js";
+import { LEVELS, LEVEL_ORDER, MARS_SCENARIOS, resolveDelaySec } from "../web/levels.js";
 import { findGlobalPath } from "./helpers/grid-astar.mjs";
 
 const ASSETS_ROOT = fileURLToPath(new URL("../assets/", import.meta.url));
@@ -412,76 +413,20 @@ function runLiveDelayedBot(level) {
   console.log(`  [${level.key} bot] arrived in ${simTime.toFixed(1)}s sim time`);
 }
 
-/** Plan-mode bot: a downsampled A* route uplinked as a sol plan and driven by the real co-pilot (same technique proven on Mars/Jezero above). */
-function runSolPlanBot(level, scenario) {
-  const terrain = loadRealTerrain(level.assetKey);
-  const { spawn, goal } = terrain.meta;
-  const delaySec = resolveDelaySec(level, terrain.meta, scenario.key);
-
-  const { path } = findGlobalPath(terrain, spawn, goal, DEFAULT_GUARDRAILS.maxSlopeDeg);
-  assert.ok(path, `${level.key}: precondition: a safe route must exist under the default slope guardrail`);
-  const waypoints = downsample(path, 4);
-  waypoints[waypoints.length - 1] = { x: goal.x, y: goal.y };
-
-  const signal = createSignalLink(delaySec);
-  let trueState = createRover({ x: spawn.x, y: spawn.y, heading: 0 });
-  let mission = startMission(createMission(level.key, level), 0);
-  let visibleState = null;
-  let autopilot = null;
-  signal.uplink({ type: "plan", waypoints }, 0);
-
-  const dt = 1 / 10;
-  const BUDGET_S = 2400;
-  let simTime = 0;
-  let planDelivered = false;
-  let movedBeforeDelivery = false;
-
-  for (; simTime < BUDGET_S && mission.status === "active"; simTime += dt) {
-    for (const cmd of signal.pullDeliveredCommands(simTime)) {
-      planDelivered = true;
-      const result = planRoute({ x: trueState.x, y: trueState.y }, cmd.waypoints, terrain, DEFAULT_GUARDRAILS);
-      autopilot = { path: result.path, index: 0, holdReason: result.status === "HOLD" ? result.reason : null };
-    }
-    if (!planDelivered && (trueState.x !== spawn.x || trueState.y !== spawn.y)) movedBeforeDelivery = true;
-
-    let control = { throttle: 0, steer: 0 };
-    if (autopilot && !autopilot.holdReason) {
-      const target = autopilot.path[autopilot.index];
-      if (target) {
-        control = steerTowardPoint(trueState, target);
-        const distM = Math.hypot(target.x - trueState.x, target.y - trueState.y) * terrain.metersPerPixel;
-        if (distM < WAYPOINT_ARRIVE_RADIUS_M) autopilot.index += 1;
-      }
-    }
-
-    trueState = stepRover(trueState, control, terrain, dt);
-    assert.equal(trueState.tipped, false, `${level.key} rover (${scenario.key}) tipped at simTime=${simTime.toFixed(2)}s`);
-    assert.equal(trueState.stopped, false, `${level.key} rover (${scenario.key}) stopped (${trueState.stopReason}) at simTime=${simTime.toFixed(2)}s`);
-
-    signal.telemetry({ ...trueState, copilotHold: autopilot?.holdReason ?? null, planActive: !!autopilot, autopilotPath: autopilot?.path ?? null }, simTime);
-    const visible = signal.visibleTelemetry(simTime);
-    if (visible) visibleState = visible;
-
-    mission = updateMission(mission, { visibleTelemetry: visibleState, simTime, terrain, telemetryAgeSec: signal.telemetryAge(simTime) });
-  }
-
-  assert.equal(movedBeforeDelivery, false, `${level.key}: the rover must not move before the delayed plan arrives`);
-  assert.ok(planDelivered, `${level.key}: the sol plan never arrived within the sim budget`);
-  assert.equal(mission.status, "won", `${level.key} (${scenario.key}): expected "won", got "${mission.status}" at simTime=${simTime.toFixed(1)}s (${whatHappenedLine(mission)})`);
-  assert.equal(mission.outcome, "arrived");
-  console.log(`  [${level.key} bot ${scenario.key}] arrived in ${simTime.toFixed(1)}s sim time`);
-}
+// review W2 re-review new_issues #4 / item 6 in the original review: mars is
+// the only plan-mode level (LEVELS), and it's in COVERED_ELSEWHERE below, so
+// a plan-mode branch here is unreachable. Nothing left to register it - see
+// the MARS_SCENARIOS loop above for the shipped createMarsAutopilot +
+// autopilotStep loop plan-mode levels actually run through.
 
 const COVERED_ELSEWHERE = new Set(["lunokhod", "tycho", "mars"]); // already proven above with hand-tuned bots
 
 for (const key of LEVEL_ORDER) {
   if (COVERED_ELSEWHERE.has(key)) continue;
   const level = LEVELS[key];
-  const name = level.mode === "plan"
-    ? `${key}: a sol plan uplinked through the real delay reaches the goal under the shipped DEFAULT guardrails`
-    : `${key}: a delayed-telemetry bot reaches the goal from spawn without tipping or driving onto no-data terrain`;
-  registerAssetGatedTest(name, level.assetKey, () => {
-    if (level.mode === "plan") runSolPlanBot(level, resolveScenario());
-    else runLiveDelayedBot(level);
-  });
+  // Fails loudly instead of silently mis-testing if a future plan-mode
+  // level ever lands outside COVERED_ELSEWHERE - see the note above.
+  assert.notEqual(level.mode, "plan", `${key}: a plan-mode level needs its own bot loop (see the MARS_SCENARIOS loop above), not the live-drive bot below`);
+  const name = `${key}: a delayed-telemetry bot reaches the goal from spawn without tipping or driving onto no-data terrain`;
+  registerAssetGatedTest(name, level.assetKey, () => runLiveDelayedBot(level));
 }

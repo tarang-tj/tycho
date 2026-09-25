@@ -45,3 +45,39 @@ test("runDryRun: is deterministic for the same inputs (same seeds -> same summar
   const b = await runDryRun(params);
   assert.deepEqual(a, b);
 });
+
+// review W2 re-review new_issues #3: no automated test covered the
+// ok:false branch (worker built/ran but couldn't use the real terrain) -
+// only the "no Worker at all" path above was exercised. A fake Worker that
+// constructs fine but always replies ok:false proves that branch falls
+// back to the SAME chunked result runChunkedEnsemble()/ensemble() give for
+// identical inputs, same as the no-Worker path already proves.
+test("runDryRun: an ok:false Worker reply falls back to the chunked result matching ensemble()", async () => {
+  const params = { terrain, spawn, waypoints, guardrails: DEFAULT_GUARDRAILS, N: 8, baseSeed: 0, driftPct: 1 };
+
+  class FakeFailingWorker {
+    constructor() {
+      this.listeners = {};
+    }
+    addEventListener(type, cb) {
+      this.listeners[type] = cb;
+    }
+    postMessage(data) {
+      setTimeout(() => this.listeners.message?.({ data: { requestId: data.requestId, ok: false } }), 0);
+    }
+    terminate() {}
+  }
+
+  const originalWorker = globalThis.Worker;
+  globalThis.Worker = FakeFailingWorker;
+  let fallbackResult;
+  try {
+    fallbackResult = await runDryRun(params);
+  } finally {
+    if (originalWorker === undefined) delete globalThis.Worker;
+    else globalThis.Worker = originalWorker;
+  }
+
+  const direct = ensemble(params);
+  assert.deepEqual(fallbackResult, direct);
+});

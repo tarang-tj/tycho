@@ -35,6 +35,7 @@ export function renderPlanningPanel(plan, opts) {
 
   const waypoints = [];
   let dryRunBusy = false; // true while a "Dry run" press is in flight - blocks a second overlapping run, never the render loop
+  let planRevision = 0; // bumped by markPredictionStale(); lets an in-flight dry run's .then know its plan is no longer the one on screen (review W2 re-review new_issues #2)
   let cursor = { x: terrain.meta?.spawn?.x ?? terrain.width / 2, y: terrain.meta?.spawn?.y ?? terrain.height / 2 };
   const CURSOR_STEP_PX = terrain.width / 48; // one minimap grid cell per keypress
 
@@ -55,6 +56,7 @@ export function renderPlanningPanel(plan, opts) {
   // dryRunResult below exists.
   function markPredictionStale() {
     dryRunResult.hidden = true;
+    planRevision += 1;
   }
 
   /** Uplink is gated on >=1 waypoint; dry run is gated the same way, PLUS a run already in flight (dryRunBusy). */
@@ -153,8 +155,15 @@ export function renderPlanningPanel(plan, opts) {
     dryRunBusy = true;
     syncButtons();
     dryRunBtn.textContent = "Running dry run...";
+    const revisionAtPress = planRevision;
     onDryRun([...waypoints], guardrailValues.read())
       .then((summary) => {
+        // The plan on screen changed (a waypoint/guardrail edit, Clear, or
+        // Backspace) while this run was in flight: this result no longer
+        // describes the CURRENT plan, so never render it as if it did
+        // (review W2 re-review new_issues #2 - the panel-visible sibling of
+        // finding 2's end-card signature check).
+        if (planRevision !== revisionAtPress) return;
         const { resultLine, driftLine } = formatDryRunSummary(summary);
         dryRunResult.hidden = false;
         dryRunResult.innerHTML = "";
@@ -169,6 +178,7 @@ export function renderPlanningPanel(plan, opts) {
         dryRunResult.scrollIntoView?.({ block: "nearest" });
       })
       .catch(() => {
+        if (planRevision !== revisionAtPress) return;
         dryRunResult.hidden = false;
         dryRunResult.textContent = "Dry run failed to complete; try again.";
       })
