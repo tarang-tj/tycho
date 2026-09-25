@@ -298,8 +298,19 @@ try {
     const level = LEVELS[key];
     const shipped = existsSync(`${assetsRoot}${level.assetKey}/height.bin`) && existsSync(`${assetsRoot}${level.assetKey}/meta.json`);
     if (!shipped) {
-      console.log(`${level.label}: assets/${level.assetKey}/ not present in this worktree - skipping its boot probe (data lane pending).`);
-      continue;
+      // M4: a shipped level's assets going missing (bad .gitignore, LFS
+      // miss, partial copy) must fail the gate, not silently pass it - the
+      // "skip while the data lane is pending" behavior is now opt-in only,
+      // via TYCHO_ALLOW_MISSING_ASSETS=1, since every LEVEL_ORDER level
+      // ships real assets as of this wave.
+      if (process.env.TYCHO_ALLOW_MISSING_ASSETS === "1") {
+        console.log(`${level.label}: assets/${level.assetKey}/ not present - skipping (TYCHO_ALLOW_MISSING_ASSETS=1).`);
+        continue;
+      }
+      throw new Error(
+        `${level.label}: assets/${level.assetKey}/ is missing (height.bin/meta.json not found). ` +
+        "Every level in LEVEL_ORDER must ship real assets. If this is intentional " +
+        "(e.g. a data lane still in progress), set TYCHO_ALLOW_MISSING_ASSETS=1 to skip it explicitly.");
     }
     await page.evaluate((k) => window.TYCHO.switchLevel(k), key);
     await page.waitForFunction((k) => window.TYCHO.getLevel() === k, key, { timeout: 5000 });
@@ -313,6 +324,52 @@ try {
     const delaySec = await page.evaluate(() => window.TYCHO.debug.getDelaySec());
     assert.ok(delaySec > 0, `${level.label}: one-way delay must be a real positive number, got ${delaySec}`);
     console.log(`${level.label}: booted cleanly, real DEM, ${info.width}x${info.width} @ ${info.metersPerPixel} m/px, delay ${delaySec.toFixed(2)}s.`);
+  }
+
+  // ---------------------------------------------------------------------
+  // H2 regression guard: at phone width (390x844) every level button in
+  // the top bar must be fully inside the viewport (or reachable by
+  // scrolling its container) and clickable - not clipped off-screen by
+  // .level-select's overflow, and not the reported Jezero-button bug.
+  // ---------------------------------------------------------------------
+  const mobilePage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  try {
+    await mobilePage.goto(`http://127.0.0.1:${port}/web/`, { waitUntil: "networkidle" });
+    await mobilePage.waitForFunction(() => window.TYCHO?.ready === true, null, { timeout: 10000 });
+    await mobilePage.click("#titleStart"); // close the title screen, as a phone player would
+    await mobilePage.waitForSelector(".level-select", { state: "visible" });
+
+    const report = await mobilePage.evaluate(() => {
+      const container = document.querySelector(".level-select");
+      const containerBox = container.getBoundingClientRect();
+      return [...document.querySelectorAll(".level-btn")].map((btn) => {
+        const box = btn.getBoundingClientRect();
+        const insideViewport = box.left >= 0 && box.right <= window.innerWidth;
+        // A button clipped by the container's own bounds (overflow:hidden)
+        // is unreachable even if scrolling exists; a button outside the
+        // container's current scroll window but reachable by scrolling
+        // (overflow-x:auto) is fine.
+        const withinContainerScrollRange = box.right <= container.scrollWidth + containerBox.left + 1
+          && box.left >= containerBox.left - 1;
+        return { level: btn.dataset.level, insideViewport, withinContainerScrollRange, box };
+      });
+    });
+    assert.equal(report.length, LEVEL_ORDER.length, `expected ${LEVEL_ORDER.length} level buttons, found ${report.length}`);
+    for (const btn of report) {
+      assert.ok(btn.insideViewport || btn.withinContainerScrollRange,
+        `${btn.level} level button is neither inside the 390px viewport nor reachable by the top bar's scroll ` +
+        `(box=${JSON.stringify(btn.box)})`);
+    }
+    // Every button must also actually be clickable at its own screen
+    // position (proves it isn't hidden under overflow:hidden clipping).
+    for (const key of LEVEL_ORDER) {
+      await mobilePage.locator(`.level-btn[data-level="${key}"]`).scrollIntoViewIfNeeded();
+      await mobilePage.click(`.level-btn[data-level="${key}"]`);
+      await mobilePage.waitForFunction((k) => window.TYCHO.getLevel() === k, key, { timeout: 5000 });
+    }
+    console.log(`Mobile top bar (390x844): all ${LEVEL_ORDER.length} level buttons are reachable and clickable.`);
+  } finally {
+    await mobilePage.close();
   }
 
   // Expected noise: real DEM assets for Mars are produced by a separate

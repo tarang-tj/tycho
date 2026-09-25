@@ -139,8 +139,6 @@ body.title-open .hud { transform: translateY(10px); }
 .level-card[data-level="mars"] { --card-accent: #ffb27a; }
 .level-card[data-level="change4"] { --card-accent: #d6c37a; }
 .level-card[data-level="apollo17"] { --card-accent: #cfd4d8; }
-.level-card--pending { opacity: 0.7; }
-.level-card--pending .card-note { color: var(--muted); font-style: italic; }
 .card-name { font-family: var(--cond); font-weight: 600; font-size: 1.3rem; letter-spacing: 0.06em; }
 .card-meta { font-family: var(--mono); font-size: 0.82rem; color: var(--muted); letter-spacing: 0.04em; }
 .card-delay { margin-top: 0.55rem; font-family: var(--mono); font-size: 1.5rem; color: var(--card-accent); font-variant-numeric: tabular-nums; }
@@ -160,7 +158,14 @@ body.title-open .hud { transform: translateY(10px); }
   .identity small { display: none; }
   .about-data-btn { display: none; } /* the title-screen link covers this before Start; topbar is too tight for it in-game */
   .terrain-banner, .no-data-legend { white-space: normal; max-width: 80vw; text-align: center; }
-  .level-btn { padding: 0.38rem 0.65rem; font-size: 0.82rem; }
+  /* H2 fix: at phone widths the top bar is too narrow to fit all 5 level
+     buttons at full size (Jezero was clipped off-screen by .level-select's
+     base overflow:hidden). Hide the planet-suffix span, stop labels from
+     wrapping, and let the bar scroll horizontally instead of clipping, so
+     every level stays reachable. */
+  .level-select { max-width: calc(100vw - 6.5rem); overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
+  .level-btn { padding: 0.38rem 0.65rem; font-size: 0.82rem; white-space: nowrap; flex-shrink: 0; }
+  .level-btn span { display: none; }
   .hud { top: auto; left: 0; right: 0; bottom: 0; width: auto; height: var(--sheet-h); max-height: none; border-radius: 12px 12px 0 0; border-left: 0; border-right: 0; border-bottom: 0; background: var(--glass-strong); padding: 0.7rem 1rem calc(0.8rem + env(safe-area-inset-bottom)); }
   .hud-row { grid-template-columns: 1fr 1fr 1fr; }
   .hud-row > div { padding: 0.4rem 0.4rem 0.35rem !important; border-right: 1px solid var(--line) !important; }
