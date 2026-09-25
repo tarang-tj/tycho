@@ -4,7 +4,7 @@
 // open, cinematic intro when it closes. Also mirrors the active level onto
 // <html data-body> so CSS can switch the accent colour per body.
 import { isOpen as isAboutOpen } from "./about-data-panel.js";
-import { LEVEL_ORDER } from "./levels.js";
+import { LEVELS, LEVEL_ORDER } from "./levels.js";
 
 const screen = document.getElementById("title-screen");
 const cards = [...document.querySelectorAll(".level-card")];
@@ -51,3 +51,29 @@ const syncBody = () => {
 };
 new MutationObserver(syncBody).observe(document.querySelector(".level-select"), { subtree: true, attributes: true, attributeFilter: ["aria-pressed"] });
 select(LEVEL_ORDER[0]);
+
+// New sites (Chang'e-4, Opportunity, Apollo 17) ship as config-driven cards
+// immediately - the engine already falls back to synthetic terrain with an
+// on-screen banner if a level's assets aren't in this checkout (see
+// terrain-data.js) - but the card itself should say so up front rather than
+// let the player discover it only after Start. Non-blocking: a level is
+// still fully playable (on synthetic terrain) while this check is pending
+// or fails closed (treated as unavailable).
+async function markPendingCards() {
+  await Promise.all(cards.map(async (card) => {
+    const level = LEVELS[card.dataset.level];
+    if (!level) return;
+    let available = false;
+    try {
+      const res = await fetch(`../assets/${level.assetKey}/meta.json`, { method: "HEAD" });
+      available = res.ok;
+    } catch {
+      available = false;
+    }
+    if (available) return;
+    card.classList.add("level-card--pending");
+    const note = card.querySelector(".card-note");
+    if (note) note.textContent = "Terrain not yet available - plays on a synthetic preview";
+  }));
+}
+markPendingCards();

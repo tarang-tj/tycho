@@ -29,11 +29,36 @@ export const BRIEFS = {
     "The one-way delay is minutes, so you are watching the past. Place waypoints, then uplink the plan.",
     "TYCHO's co-pilot drives the plan under the guardrails you set, and reports back after the delay.",
   ],
+  change4: [
+    "CHANG'E-4 - MOON, VON KARMAN CRATER, FAR SIDE",
+    "One-way delay via the Queqiao relay: close enough to steer live.",
+    "Drive to where China's Chang'e-4 lander has sat since January 2019, without exceeding the slope limit or stalling out.",
+  ],
+  opportunity: [
+    "OPPORTUNITY - MARS, PERSEVERANCE VALLEY",
+    "The one-way delay is minutes, so you are watching the past. Place waypoints, then uplink the plan.",
+    "TYCHO's co-pilot drives the plan under the guardrails you set, toward the rover that went silent in a 2018 dust storm.",
+  ],
+  apollo17: [
+    "APOLLO 17 - MOON, TAURUS-LITTROW VALLEY",
+    "One-way delay 1.28 s: close enough to steer live.",
+    "The astronauts drove the real LRV here with no delay at all, in December 1972. You are driving TYCHO to it remotely from Earth.",
+  ],
 };
 
-export function createMission(levelKey) {
+/**
+ * `context` carries the two level-config fields mission logic actually needs
+ * (see web/levels.js): `mode` ("live" | "plan", default "live") gates the
+ * Mars-style "don't stall before the plan is visibly active" rule, and
+ * `arrivalLine` (optional) is an honest, level-specific arrival sentence for
+ * a real landmark goal (e.g. Lunokhod 2). Passing the level object itself
+ * works too, since only these two fields are read.
+ */
+export function createMission(levelKey, context = {}) {
   return {
     level: levelKey,
+    mode: context.mode ?? "live",
+    arrivalLine: context.arrivalLine ?? null,
     status: "brief", // brief | active | won | tipped | stalled | held
     outcome: null,
     startSimTime: null,
@@ -54,7 +79,7 @@ export function createMission(levelKey) {
 
 /** Move a mission from "brief" to "active", resetting all run-scoped counters. */
 export function startMission(mission, simTime) {
-  return { ...createMission(mission.level), status: "active", startSimTime: simTime };
+  return { ...createMission(mission.level, mission), status: "active", startSimTime: simTime };
 }
 
 /**
@@ -103,12 +128,14 @@ export function updateMission(mission, { visibleTelemetry, simTime, terrain, tel
     return { ...m, status: "held", outcome: "held", endSimTime: simTime };
   }
 
-  // Mars sol plans sit parked at spawn while the player is still placing
-  // waypoints; only start the stall clock once the VISIBLE telemetry itself
-  // shows the plan is active on the rover (state.planActive, stamped by the
-  // caller - see main.js's tickPhysics) - never at the rover's true
-  // present-time delivery moment, which the player can't see yet (C1/H1).
-  const stallEligible = mission.level !== "mars" || state.planActive;
+  // "plan"-mode levels (sol plans) sit parked at spawn while the player is
+  // still placing waypoints; only start the stall clock once the VISIBLE
+  // telemetry itself shows the plan is active on the rover (state.planActive,
+  // stamped by the caller - see main.js's tickPhysics) - never at the
+  // rover's true present-time delivery moment, which the player can't see
+  // yet (C1/H1). Keyed on mode, not a specific level key, so every
+  // plan-mode level (Jezero, Opportunity, ...) gets the same protection.
+  const stallEligible = mission.mode !== "plan" || state.planActive;
   if (stallEligible && distToGoal != null) {
     if (distToGoal < m.progressBestM - STALL_PROGRESS_EPS_M) {
       m.progressBestM = distToGoal;
@@ -131,11 +158,11 @@ export function whatHappenedLine(mission) {
   const avg = averageDelaySec(mission).toFixed(1);
   switch (mission.outcome) {
     case "arrived":
-      if (mission.level === "mars") {
+      if (mission.mode === "plan") {
         return `TYCHO's co-pilot drove the plan you set, landing on target after ${avg} s of telemetry delay each way. You planned the route and guardrails; the co-pilot did the driving.`;
       }
-      if (mission.level === "lunokhod") {
-        return "You reached Lunokhod 2. It has been parked here since 1973.";
+      if (mission.arrivalLine) {
+        return mission.arrivalLine;
       }
       return `You steered ${avg} s into the past on average, and TYCHO still made it.`;
     case "abandoned":

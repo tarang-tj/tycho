@@ -21,13 +21,15 @@ On the Moon, a human can steer a rover live. Radio takes about 1.28 seconds to g
 
 On Mars you can't. The signal takes minutes each way, so by the time you see a cliff edge on your screen, the rover reached it long ago. That's why Mars rovers get a plan for the day and drive themselves between commands.
 
-TYCHO lets you feel that difference with your own hands. Two levels are live driving with a short lag, on two different real Moon sites. The third is planning, handing over control, and trusting the co-pilot, on Mars. Everything you see on screen is telemetry from the past, and when the run ends the game shows you where the rover really was.
+TYCHO lets you feel that difference with your own hands. Most levels are live driving with a short lag, on real Moon sites (some line-of-sight, one via a relay satellite). Mars-mode levels hand over control: you plan, uplink, and trust the co-pilot. Everything you see on screen is telemetry from the past, and when the run ends the game shows you where the rover really was.
 
 ## How to play
 
-**Level 1: Lunokhod (Moon, Le Monnier crater).** Drive to where the real Lunokhod 2 rover has been parked since 1973, at 25.830 N, 30.914 E.
+Every level is one of two modes, described in [The level model](#the-level-model) below: **live** (you drive, a short delay behind) or **plan** (you set waypoints and guardrails, the co-pilot drives, minutes behind).
 
-**Level 2: Tycho (Moon, Tycho central peak).** Drive the last stretch up to the high-point marker near the top of Tycho's central peak.
+**Lunokhod (Moon, Le Monnier crater).** Drive to where the real Lunokhod 2 rover has been parked since 1973, at 25.830 N, 30.914 E.
+
+**Tycho (Moon, Tycho central peak).** Drive the last stretch up to the high-point marker near the top of Tycho's central peak.
 
 | Input | Action |
 |---|---|
@@ -37,7 +39,7 @@ TYCHO lets you feel that difference with your own hands. Two levels are live dri
 
 Every change in your input is sent to the rover and lands 1.28 s later. The picture you steer by is 1.28 s old. Too steep a slope and TYCHO tips. Reaching Lunokhod 2 doesn't end the mission in fiction: the game shows a short, sourced line ("You reached Lunokhod 2. It has been parked here since 1973.") and nothing more.
 
-**Level 3: Jezero (Mars, near the Perseverance landing site).** Reach the goal marker near the base of the delta.
+**Jezero (Mars, near the Perseverance landing site).** Reach the goal marker near the base of the delta.
 
 1. Pick a delay scenario (close approach, typical, or near conjunction). The real one-way delay is always shown next to the compression factor used for play.
 2. Click the minimap to place up to 5 waypoints, or use the keyboard: arrow keys move a cursor, `Enter` places a waypoint, `Backspace` removes the last one, `U` uplinks. A click near the goal snaps onto it. That's your sol plan.
@@ -49,6 +51,12 @@ The goal is about 1.8 km out. The default autonomous distance cap (3 km) covers 
 After each run a scoreboard compares success with and without the co-pilot. With fewer than 5 runs it says so: `too few runs to trust this rate`. Switching levels or retrying mid-run records that run as **abandoned** and excludes it from every success rate, so walking away from a run never counts against (or for) you.
 
 Every end card has a **Copy result** button: it copies a plain-text summary (level, outcome, time, delay, co-pilot on/off, and the game's link) to your clipboard, for sharing.
+
+**Coming in this release: Chang'e-4, Opportunity, Apollo 17.** These three levels are wired up end to end (title card, brief, delay model, goal landmark) but their real DEM assets ship from a separate data pipeline run; a card without its terrain yet plays on a synthetic stand-in and says so on the card and on screen, never silently.
+
+- **Chang'e-4 (Moon, Von Karman crater, far side).** Drive to China's Chang'e-4 lander, parked since January 2019. Its delay routes through the Queqiao relay satellite (no direct line of sight to Earth from the far side); the HUD shows the real relay path once the asset ships a delay model, or a clearly-labelled 1.28 s fallback until then.
+- **Opportunity (Mars, Perseverance Valley).** A plan-mode level like Jezero: reach the rover that drove itself into a 2018 dust storm and never woke back up.
+- **Apollo 17 (Moon, Taurus-Littrow valley).** Drive to the real Lunar Roving Vehicle the astronauts drove there in December 1972, with no delay at all on their end. You are driving TYCHO to it from Earth, 1.28 s behind.
 
 ## Screenshots
 
@@ -81,6 +89,7 @@ Honesty is the point of this project, so here's the line, drawn plainly. The sam
 | **Approximate** | Earth in the lunar sky | Shown at a realistic apparent size, but its sky position is illustrative, not an ephemeris. |
 | **Not photos** | Surface color | Shaded from the elevation data with a Moon or Mars palette. No orbital imagery is used. |
 | **Data-driven proxies** | Tycho and Mars spawn/goal | Picked by code from the DEM (lowest safe slope, highest reachable point, roughness near the delta), then moved where testing showed the original spot couldn't be won. Every move is logged in `assets/*/meta.json`. Lunokhod's goal is not a proxy (it's the real parked-rover coordinate); its spawn is a code-picked point 2.06 km south, along the rover's real historic approach direction. |
+| **Coming in this release** | Chang'e-4, Opportunity, Apollo 17 elevation and landmark facts | Wired up end to end in the game (`web/levels.js`), but their real DEM/meta assets ship from a separate data pipeline run and aren't in this checkout yet. Each plays on labelled synthetic terrain until then; nothing about their real sites is asserted here that hasn't been sourced. |
 
 ## How it works
 
@@ -95,6 +104,22 @@ flowchart LR
     R --> T["signal.js telemetry<br/>visible after one-way delay"]
     T --> V["scene.js + HUD<br/>the visible past"]
 ```
+
+### The level model
+
+Every level in `web/levels.js` separates three independent axes, so no other module ever branches on a level name or asset directory:
+
+| Axis | Values | Drives |
+|---|---|---|
+| `planet` | `"moon"` \| `"mars"` | Rendering look only: sky, lighting, ground/rock/dust color, texture detail (`scene.js`'s `LOOK` table, `sky.js`, `ground-fx.js`, `textures.js`). |
+| `mode` | `"live"` \| `"plan"` | Mission logic: `"live"` routes WASD/touch input straight to the rover; `"plan"` gates the stall clock on the uplinked plan actually going active (`web/mission.js`), and switches the HUD to the waypoint/guardrail panel. |
+| `delay` | `{type:"direct", oneWaySec}` \| `{type:"relay", fallbackOneWaySec, pathLabel}` \| `{type:"mars-scenarios"}` | How the one-way delay is resolved each run (`resolveDelaySec` in `web/levels.js`). `relay` reads the real value from the loaded terrain's `meta.delayModel.oneWaySec` if the asset ships one, otherwise uses the fallback, clearly labelled as one, on screen. |
+
+`assetKey` is separate again: it's only ever used to pick the `assets/<assetKey>/` directory to fetch (`terrain-data.js`); several levels can share one (Tycho and Lunokhod are both `planet: "moon"`, but Tycho's `assetKey` is `"moon"` and Lunokhod's is `"lunokhod"`).
+
+A level with a real, still-there object at its goal (a parked rover, a lander) sets `landmarkKind` (one of `lunokhod2`, `change4`, `mer`, `lrv`) to place an illustrative model there - see `web/landmarks.js` and the per-model files (`lunokhod-parked.js`, `change4-lander.js`, `mer-rover.js`, `apollo-lrv.js`). Its facing comes from the terrain's own `meta.json` (`landmarkHeadingDeg` or a compass string `landmarkHeadingCompass`), defaulting to south if the asset names none - never invented in code.
+
+**To add a new site:** run the data pipeline to produce `assets/<key>/{height.bin,meta.json,mask.bin,albedo.jpg}`, add one entry to `LEVELS` in `web/levels.js` (planet, mode, delay, optional `landmarkKind`/`arrivalLine`), add its key to `LEVEL_ORDER`, add brief lines to `BRIEFS` in `web/mission.js`, and add a `.level-btn` + `.level-card` pair in `web/index.html`. The engine (terrain loading, mission state, HUD, scoreboard, share text) needs no other changes; `tests/levels.test.mjs` and the parameterized bots in `tests/playability.test.mjs` pick the new level up automatically (the bots SKIP with an explicit reason, not a silent pass, until the level's real assets are present).
 
 ### The delay model: true present vs visible past
 
@@ -137,12 +162,12 @@ A stereo DEM is noisy at the single-pixel level, and a rover doesn't feel one pi
 `npm run gate` runs three stages and fails on any of them:
 
 1. **Lint:** a syntax check over every module.
-2. **Unit tests:** 83 `node:test` cases covering the signal link, rover physics, co-pilot, mission state machine, telemetry-only views, load races, scoreboard (including abandoned-run exclusion and the v1-to-v2 level-key migration), share-result formatting, and terrain sampling.
+2. **Unit tests:** `node:test` cases (95 passing, plus 6 `SKIP`s with explicit reasons for the three not-yet-shipped sites - see below) covering the signal link, rover physics, co-pilot, mission state machine, telemetry-only views, load races, scoreboard (including abandoned-run exclusion and the v1-to-v2 level-key migration), share-result formatting, terrain sampling, and the level model itself (`tests/levels.test.mjs`: every level resolves a valid planet/mode/delay, relay-delay math and its fallback, and a regression check that the old hardcoded `"mars"`/`"lunokhod"`/`level.body` checks this wave removed don't reappear).
 3. **Boot probe:** `scripts/verify_boot.mjs` serves the repo and drives the real game in headless Chromium with WebGL.
 
-The unit tests include **playability bots** (`tests/playability.test.mjs`). They load the real shipped DEMs and must actually win. All bots run the real mission state machine. The Lunokhod and Tycho bots only see telemetry through `signal.js`, 1.28 s stale, and steer a safety-buffered A* route to the goal without tipping or touching no-data ground; Lunokhod's crater-field microterrain needed a pure-pursuit lookahead (steer at a point up to 20 m ahead on the route, not just the next grid cell) to drive it at a realistic speed instead of crawling. The Mars bot uplinks a plan through each of the three delay settings (3, 12 and 22 min real, compressed) on the shipped default guardrails and must arrive every time. Two real bugs surfaced this way: at the two longer Mars delays the stall timer started before the player could even see the rover move, so those runs could never be won; and Lunokhod's real terrain forced long stretches without straight-line progress toward the goal while going around microterrain, which needed the stall timeout raised from 20 s to 75 s (an honest widening of a fairness margin, not a special case for the bot). The bots are also the proof that the slope smoothing matters, as described in the section above.
+The unit tests include **playability bots** (`tests/playability.test.mjs`), parameterized over every level in `LEVEL_ORDER`. They load the real shipped DEMs and must actually win, running the real mission state machine; a level whose `assets/<key>/` isn't in the checkout yet `SKIP`s with the reason ("assets/.../ not present in this worktree (data lane pending)") instead of silently passing. The Lunokhod and Tycho bots only see telemetry through `signal.js`, 1.28 s stale, and steer a safety-buffered A* route to the goal without tipping or touching no-data ground; Lunokhod's crater-field microterrain needed a pure-pursuit lookahead (steer at a point up to 20 m ahead on the route, not just the next grid cell) to drive it at a realistic speed instead of crawling - the same technique now backs the generic live-mode bot used for any new live level. The Mars bot uplinks a plan through each of the three delay settings (3, 12 and 22 min real, compressed) on the shipped default guardrails and must arrive every time; the same shape (generalized) backs Opportunity once its assets ship. Two real bugs surfaced this way: at the two longer Mars delays the stall timer started before the player could even see the rover move, so those runs could never be won; and Lunokhod's real terrain forced long stretches without straight-line progress toward the goal while going around microterrain, which needed the stall timeout raised from 20 s to 75 s (an honest widening of a fairness margin, not a special case for the bot). The bots are also the proof that the slope smoothing matters, as described in the section above.
 
-The boot probe checks that the real DEM renders on the flagship Lunokhod level, that the rover's true state doesn't move until the one-way delay has passed (observed: about 1.4 s for 1.28 s), and that your view doesn't change until the round trip is done (observed: about 2.7 s for 2.56 s). It also confirms Tycho boots cleanly, that a Mars plan waits out its 12 s compressed delay, that the co-pilot holds instead of driving onto a slope it's forbidden to cross, and that switching from Tycho to Mars clears Tycho's status line instead of leaving it stuck on screen.
+The boot probe checks that the real DEM renders on the flagship Lunokhod level, that the rover's true state doesn't move until the one-way delay has passed (observed: about 1.4 s for 1.28 s), and that your view doesn't change until the round trip is done (observed: about 2.7 s for 2.56 s). It also confirms Tycho boots cleanly, that a Mars plan waits out its 12 s compressed delay, that the co-pilot holds instead of driving onto a slope it's forbidden to cross, and that switching from Tycho to Mars clears Tycho's status line instead of leaving it stuck on screen. It then iterates every other level in `LEVEL_ORDER`: one whose assets are present in the checkout gets the same real-DEM + positive-delay proof; one without is logged and skipped, not asserted against - that gate belongs to the data pipeline lane, not this one.
 
 The Python pipeline has its own 34 offline tests: georef round trips (including the Lunokhod raster's different GeoKey combination), nodata fill and mask, resampling, site picking (including the new directional picker used to place Lunokhod's spawn) and the meta schema.
 

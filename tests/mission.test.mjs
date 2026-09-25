@@ -4,6 +4,7 @@ import {
   createMission, startMission, updateMission,
   whatHappenedLine, averageDelaySec, GOAL_RADIUS_M, STALL_TIMEOUT_S,
 } from "../web/mission.js";
+import { LEVELS } from "../web/levels.js";
 
 const TERRAIN = { metersPerPixel: 1, meta: { goal: { x: 100, y: 0 } } };
 
@@ -75,7 +76,7 @@ test("progress resets the stall clock", () => {
 });
 
 test("Mars stall clock does not start until the VISIBLE telemetry shows planActive (C1)", () => {
-  let m = startMission(createMission("mars"), 0);
+  let m = startMission(createMission("mars", LEVELS.mars), 0);
   // Telemetry visible but planActive is still false (plan not yet delivered,
   // or delivered but not yet visible to the player): no stall clock at all,
   // however much rover-true time passes.
@@ -96,7 +97,7 @@ test("Mars stall clock does not start until the VISIBLE telemetry shows planActi
 });
 
 test("a copilotHold telemetry field transitions to held", () => {
-  let m = startMission(createMission("mars"), 0);
+  let m = startMission(createMission("mars", LEVELS.mars), 0);
   m = updateMission(m, { visibleTelemetry: telem(0, 0, 1, { copilotHold: "HOLD: no safe path", planActive: true }), simTime: 1, terrain: TERRAIN });
   assert.equal(m.status, "held");
   assert.equal(m.outcome, "held");
@@ -115,7 +116,7 @@ test("averageDelaySec and whatHappenedLine reflect accumulated telemetry age", (
 // --- U2/U1: outcome wording must credit the right actor -----------------
 
 test("U2: a Mars arrival credits the co-pilot's driving, not the player's steering", () => {
-  let m = startMission(createMission("mars"), 0);
+  let m = startMission(createMission("mars", LEVELS.mars), 0);
   m = updateMission(m, { visibleTelemetry: telem(100 - GOAL_RADIUS_M + 1, 0, 1, { planActive: true }), simTime: 1, terrain: TERRAIN });
   assert.equal(m.status, "won");
   const line = whatHappenedLine(m);
@@ -124,13 +125,13 @@ test("U2: a Mars arrival credits the co-pilot's driving, not the player's steeri
 });
 
 test("U1: a Lunokhod arrival states the true parked-since fact, nothing more", () => {
-  let m = startMission(createMission("lunokhod"), 0);
+  let m = startMission(createMission("lunokhod", LEVELS.lunokhod), 0);
   m = updateMission(m, { visibleTelemetry: telem(100 - GOAL_RADIUS_M + 1, 0, 1), simTime: 1, terrain: TERRAIN });
   assert.equal(m.status, "won");
   assert.equal(whatHappenedLine(m), "You reached Lunokhod 2. It has been parked here since 1973.");
 });
 
 test("U2: an abandoned outcome has an honest, non-blaming line", () => {
-  const m = { ...startMission(createMission("mars"), 0), outcome: "abandoned" };
+  const m = { ...startMission(createMission("mars", LEVELS.mars), 0), outcome: "abandoned" };
   assert.match(whatHappenedLine(m), /abandoned/i);
 });

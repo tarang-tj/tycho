@@ -1,6 +1,6 @@
 // three.js renderer for TYCHO. Imported only by main.js.
 //
-// API returned by createScene(canvas, terrain, { exaggeration, albedoUrl, body }):
+// API returned by createScene(canvas, terrain, { exaggeration, albedoUrl, planet, landmarkKind }):
 //   available, rendererType, camera, body
 //   updateFromVisibleState(visibleState, trueState?)  last-known telemetry (what the player sees)
 //   updateTrueState(trueState)                        feeds the debug/reveal ghost only
@@ -20,7 +20,7 @@ import { bakeSunMask, buildDemGeometry, buildDemNormalTexture, buildRingGeometry
 import { createNearField } from "./near-field.js";
 import { createSky, makeEnvironment } from "./sky.js";
 import { createRoverModel } from "./rover-model.js";
-import { createParkedLunokhod } from "./lunokhod-parked.js";
+import { createLandmark, resolveLandmarkHeadingDeg } from "./landmarks.js";
 import { createRoverRig } from "./rover-rig.js";
 import { createTracks, createDust } from "./ground-fx.js";
 import { createOverlays } from "./overlays.js";
@@ -40,21 +40,14 @@ const LOOK = {
   },
 };
 
+// `opts.planet` ("moon" | "mars") is the ONLY thing that drives the
+// lighting/material/terrain-shaping look below (LOOK, terrain-field.js,
+// textures.js): every level, real site or not, shares that look with its
+// planet. Which real-site model (if any) gets placed at the goal is a
+// SEPARATE, explicit `opts.landmarkKind` (see web/landmarks.js) - rendering
+// never infers either one from the level key or asset directory name.
 function resolveBody(opts) {
-  // Lunokhod is a real Le Monnier crater site on the Moon: it shares every
-  // lighting/material/terrain-shaping look with the "moon" body (see LOOK,
-  // terrain-field.js, textures.js, none of which know a third body key) -
-  // only createScene's own Lunokhod-specific placement code below checks the
-  // RAW opts.body (not this resolved value) to tell the sites apart.
-  if (opts.body === "lunokhod") return "moon";
-  if (opts.body === "moon" || opts.body === "mars") return opts.body;
-  if (/mars/i.test(opts.albedoUrl || "")) return "mars";
-  if (/moon/i.test(opts.albedoUrl || "")) return "moon";
-  try {
-    const key = window.TYCHO?.getLevel?.();
-    if (key === "mars" || key === "moon") return key;
-  } catch { /* no level info */ }
-  return "moon";
+  return opts.planet === "mars" ? "mars" : "moon";
 }
 
 export function createScene(canvas, terrain, opts = {}) {
@@ -218,22 +211,21 @@ export function createScene(canvas, terrain, opts = {}) {
   const goalPx = terrain.meta?.goal;
   if (goalPx) overlays.setGoal(goalPx.x * mpp, goalPx.y * mpp);
 
-  // U1: on the Lunokhod level, the goal itself is a real, still-parked
-  // rover - render an illustrative period-accurate model there so it's
-  // visible on approach, not just a HUD marker (see lunokhod-parked.js), and
-  // a floating label naming it (goalLabel from the asset's own meta.json,
-  // never invented here).
-  let parkedLunokhod = null;
+  // U1: on levels with a real, still-parked landmark at the goal (Lunokhod,
+  // Chang'e-4, Opportunity, Apollo 17 - see opts.landmarkKind/web/levels.js),
+  // render an illustrative model there so it's visible on approach, not just
+  // a HUD marker (see web/landmarks.js), and a floating label naming it
+  // (goalLabel from the asset's own meta.json, never invented here).
+  let landmark = null;
   let goalLabelSprite = null;
-  if (opts.body === "lunokhod" && goalPx) {
-    parkedLunokhod = createParkedLunokhod();
+  if (opts.landmarkKind && goalPx) {
+    landmark = createLandmark(opts.landmarkKind);
     const gw = field.pxToWorld(goalPx.x, goalPx.y);
     const groundY = near.groundAt(gw.x, gw.z);
-    parkedLunokhod.root.position.set(gw.x, groundY, gw.z);
-    // "Facing southeast" (LROC post 699). World +x is east and +z is south (pxToWorld maps map rows to z), and
-    // rotation.y = t turns local +z toward (sin t, cos t): southeast is t = 45 deg.
-    parkedLunokhod.root.rotation.y = (45 * Math.PI) / 180;
-    scene.add(parkedLunokhod.root);
+    landmark.root.position.set(gw.x, groundY, gw.z);
+    const headingDeg = resolveLandmarkHeadingDeg(terrain.meta);
+    landmark.root.rotation.y = (headingDeg * Math.PI) / 180;
+    scene.add(landmark.root);
 
     const labelText = terrain.meta?.goalLabel;
     if (labelText) {
@@ -417,7 +409,7 @@ export function createScene(canvas, terrain, opts = {}) {
       for (const m of list) { m.map?.dispose?.(); m.normalMap?.dispose?.(); m.dispose(); }
     });
     for (const t of [detailA, detailB, detailC, fillTex, realMaskTex, demNormalTex, sprite, U.uDemAlbedo.value]) t?.dispose?.();
-    parkedLunokhod?.dispose?.();
+    landmark?.dispose?.();
     goalLabelSprite?.material?.map?.dispose?.();
     goalLabelSprite?.material?.dispose?.();
     sunMask.dispose();

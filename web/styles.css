@@ -28,7 +28,7 @@ button { font: inherit; color: inherit; }
 #sceneCanvas:active { cursor: grabbing; }
 .scene-vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse 120% 90% at 50% 45%, transparent 55%, rgba(0, 0, 0, 0.42) 100%); }
 .scene-fallback { position: absolute; top: 5rem; left: 1.5rem; color: var(--warn); font-family: var(--mono); font-size: 0.85rem; }
-.terrain-banner, .mars-delay-note {
+.terrain-banner, .delay-note {
   position: absolute; left: calc(50% - var(--panel-w) / 2); transform: translateX(-50%);
   margin: 0; padding: 0.35rem 0.8rem; border: 1px solid var(--line-strong); border-radius: 4px;
   background: var(--glass); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
@@ -36,7 +36,7 @@ button { font: inherit; color: inherit; }
 }
 .terrain-banner { top: 4.2rem; color: var(--warn); }
 .no-data-legend { top: 4.2rem; color: var(--muted); cursor: help; }
-.mars-delay-note { bottom: 1.2rem; color: var(--accent); }
+.delay-note { bottom: 1.2rem; color: var(--accent); }
 
 /* Top bar: wordmark left, level switch right. */
 .topbar { position: fixed; top: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: space-between; padding: 0.9rem 1.1rem; pointer-events: none; transition: opacity 0.5s ease; }
@@ -119,7 +119,7 @@ button { font: inherit; color: inherit; }
   opacity: 0; visibility: hidden; transition: opacity 0.7s ease, visibility 0s linear 0.7s;
 }
 body.title-open .title-screen { opacity: 1; visibility: visible; transition: opacity 0.7s ease; }
-body.title-open .topbar, body.title-open .hud, body.title-open .terrain-banner, body.title-open .mars-delay-note { opacity: 0; pointer-events: none; }
+body.title-open .topbar, body.title-open .hud, body.title-open .terrain-banner, body.title-open .delay-note { opacity: 0; pointer-events: none; }
 body.title-open .hud { transform: translateY(10px); }
 .title-inner { width: min(720px, 100%); padding: 6vh 0 5vh 6vw; }
 .title-eyebrow { margin: 0 0 1.1rem; font-family: var(--mono); font-size: 0.82rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); }
@@ -136,6 +136,11 @@ body.title-open .hud { transform: translateY(10px); }
 .level-card[data-level="lunokhod"] { --card-accent: #9fd8ff; }
 .level-card[data-level="tycho"] { --card-accent: #c9c8ff; }
 .level-card[data-level="mars"] { --card-accent: #ffb27a; }
+.level-card[data-level="change4"] { --card-accent: #d6c37a; }
+.level-card[data-level="opportunity"] { --card-accent: #e08a5c; }
+.level-card[data-level="apollo17"] { --card-accent: #cfd4d8; }
+.level-card--pending { opacity: 0.7; }
+.level-card--pending .card-note { color: var(--muted); font-style: italic; }
 .card-name { font-family: var(--cond); font-weight: 600; font-size: 1.3rem; letter-spacing: 0.06em; }
 .card-meta { font-family: var(--mono); font-size: 0.82rem; color: var(--muted); letter-spacing: 0.04em; }
 .card-delay { margin-top: 0.55rem; font-family: var(--mono); font-size: 1.5rem; color: var(--card-accent); font-variant-numeric: tabular-nums; }
@@ -164,7 +169,7 @@ body.title-open .hud { transform: translateY(10px); }
   .hud-row dd { font-size: 0.86rem; }
   .touchpad { margin: 0.2rem 0 0.6rem; }
   .terrain-banner { top: 3.4rem; left: 50%; }
-  .mars-delay-note { bottom: 0.6rem; left: 50%; }
+  .delay-note { bottom: 0.6rem; left: 50%; }
   .title-screen { align-items: flex-end; background: linear-gradient(0deg, rgba(4, 5, 8, 0.96) 0%, rgba(4, 5, 8, 0.88) 55%, rgba(4, 5, 8, 0.1) 85%); }
   .title-inner { padding: 30vh 1rem calc(1.4rem + env(safe-area-inset-bottom)); }
   .title-eyebrow { font-size: 0.82rem; letter-spacing: 0.14em; margin-bottom: 0.6rem; }

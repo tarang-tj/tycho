@@ -13,7 +13,7 @@ import { deriveCopilotDisplay, planVisibleToPlayer } from "./telemetry-view.js";
 import { createGenerationGuard, createSingleLoop } from "./async-guards.js";
 import { loadScoreboard, saveScoreboard, recordRun, aggregate } from "./scoreboard.js";
 import { createHud } from "./hud.js";
-import { LEVELS, resolveScenario } from "./levels.js";
+import { LEVELS, resolveScenario, resolveDelaySec, resolveDelayLabel, getScenarios } from "./levels.js";
 import { updateHudReadout } from "./hud-readout.js";
 import { wireControls } from "./controls.js";
 
@@ -27,7 +27,7 @@ const el = {
   fallback: document.getElementById("sceneFallback"),
   terrainBanner: document.getElementById("terrainBanner"),
   noDataLegend: document.getElementById("noDataLegend"),
-  marsNote: document.getElementById("marsDelayNote"),
+  delayNote: document.getElementById("delayNote"),
   body: document.getElementById("hudBody"),
   delay: document.getElementById("hudDelay"),
   inFlight: document.getElementById("hudInFlight"),
@@ -44,7 +44,7 @@ let currentControl = { throttle: 0, steer: 0 };
 let controls = null; // set below by wireControls(); exposes resetIntent()
 let currentLevelKey = "lunokhod";
 let accumulator = 0;
-let mission = createMission("lunokhod");
+let mission = createMission("lunokhod", LEVELS.lunokhod);
 let lastMissionStatus = mission.status;
 let guardrails = { ...DEFAULT_GUARDRAILS };
 let autopilot = null; // { path: [{x,y}], index, holdReason } - TRUE (present) state, on the rover
@@ -304,9 +304,7 @@ function beginRun(scenarioKey) {
   recordAbandonedIfActive(); // a mid-run restart abandons whatever was active
   const level = LEVELS[currentLevelKey];
   activeScenarioKey = scenarioKey ?? null;
-  const delaySec = level.mode === "plan"
-    ? resolveScenario(level, scenarioKey).realMinutes * 60 / resolveScenario(level, scenarioKey).compression
-    : level.delaySec;
+  const delaySec = resolveDelaySec(level, terrain.meta, scenarioKey);
 
   hud.hideBrief();
   hud.hideEndCard();
@@ -325,18 +323,18 @@ function beginRun(scenarioKey) {
   lastVisibleHoldReason = null;
   signal = createSignalLink(delaySec);
   guardrails = { ...DEFAULT_GUARDRAILS };
-  mission = startMission(createMission(currentLevelKey), 0);
+  mission = startMission(createMission(currentLevelKey, level), 0);
   lastMissionStatus = mission.status;
   scene?.setTrueRoverVisible?.(false); // hide the previous run's end-of-mission reveal ghost
   scene?.setWaypoints?.([], { units: "px" });
   scene?.setCopilotState?.({ mode: "", path: [], holdReason: null }, { units: "px" });
 
   if (level.mode === "plan") {
-    const scenario = resolveScenario(level, scenarioKey);
-    el.marsNote.hidden = false;
-    el.marsNote.textContent = `Real one-way delay: ${scenario.realMinutes} min. Compressed ${scenario.compression}x for play.`;
+    const scenario = resolveScenario(scenarioKey);
+    el.delayNote.hidden = false;
+    el.delayNote.textContent = `Real one-way delay: ${scenario.realMinutes} min. Compressed ${scenario.compression}x for play.`;
     hud.showPlanning({
-      terrain, guardrails, delayLabel: el.marsNote.textContent,
+      terrain, guardrails, delayLabel: el.delayNote.textContent,
       onUplink: (waypoints, guardrailValues) => {
         guardrails = guardrailValues;
         plannedWaypoints = waypoints;
@@ -347,9 +345,15 @@ function beginRun(scenarioKey) {
       },
     });
   } else {
-    el.marsNote.hidden = true;
     hud.hidePlanning();
     hud.setStatusLine("Drive live: WASD or arrow keys.");
+    const relayLabel = resolveDelayLabel(level, terrain.meta);
+    if (relayLabel) {
+      el.delayNote.hidden = false;
+      el.delayNote.textContent = `Relay path: ${relayLabel} (${delaySec.toFixed(2)} s one-way).`;
+    } else {
+      el.delayNote.hidden = true;
+    }
   }
 }
 
@@ -374,8 +378,8 @@ async function loadLevel(key, opts = {}) {
     // Same level already loaded: skip the reload race (and the GPU
     // churn) entirely, just (re)start the run if asked (H4).
     if (opts.autoStart) {
-      const defaultScenario = level.scenarios?.length ? level.scenarios[0].key : undefined;
-      beginRun(defaultScenario);
+      const scenarios = getScenarios(level);
+      beginRun(scenarios?.length ? scenarios[0].key : undefined);
     }
     return;
   }
@@ -388,35 +392,36 @@ async function loadLevel(key, opts = {}) {
   hud.hideEndCard();
   hud.setStatusLine(""); // bug fix: a switch straight to another level's BRIEF (no run started yet) must not leave the OLD level's "Sent, arrives in..." line up
 
-  const nextTerrain = await loadTerrain(level.body);
+  const nextTerrain = await loadTerrain(level.assetKey);
   if (!loadGuard.isCurrent(gen)) return; // superseded by a newer level switch meanwhile
 
   currentLevelKey = key;
   terrain = nextTerrain;
-  resetRun(); // M1: end whatever run was active on the previous level/body
+  resetRun(); // M1: end whatever run was active on the previous level/asset
   el.terrainBanner.hidden = !terrain.synthetic;
   el.noDataLegend.hidden = !terrain.hasMask;
-  el.marsNote.hidden = true;
+  el.delayNote.hidden = true;
 
   scene?.dispose?.(); // dispose the OLD scene (GPU memory, textures, listeners) before creating a new one
   scene = createScene(canvas, terrain, {
     exaggeration: 1.0,
-    albedoUrl: terrain.synthetic ? null : `../assets/${level.body}/albedo.jpg`,
-    body: level.body,
+    albedoUrl: terrain.synthetic ? null : `../assets/${level.assetKey}/albedo.jpg`,
+    planet: level.planet,
+    landmarkKind: level.landmarkKind,
   });
   el.fallback.hidden = scene.available;
   api.renderer = scene.available ? "webgl" : "none";
   resizeCanvas();
 
-  mission = createMission(key);
+  mission = createMission(key, level);
   lastMissionStatus = mission.status;
   // The mission brief doubles as a persistent objective/scenario overlay: on
   // the title screen's single-step Start, the mission begins immediately
-  // (default scenario for Mars) instead of gating on a second click here;
-  // the panel stays up so the player can still read the objective or, on
-  // Mars, restart with a different delay scenario.
+  // (default scenario for plan-mode levels) instead of gating on a second
+  // click here; the panel stays up so the player can still read the
+  // objective or, on a plan-mode level, restart with a different scenario.
   hud.showBrief(level.briefLines, {
-    scenarios: level.scenarios,
+    scenarios: getScenarios(level),
     onStart: (scenarioKey) => beginRun(scenarioKey),
   });
   hud.updateScoreboard(key, aggregate(scoreboardData, key));
@@ -429,8 +434,8 @@ async function loadLevel(key, opts = {}) {
   startLoop(); // H4: single-loop guaranteed even if this races another loadLevel/visibilitychange resume
 
   if (opts.autoStart) {
-    const defaultScenario = level.scenarios?.length ? level.scenarios[0].key : undefined;
-    beginRun(defaultScenario);
+    const scenarios = getScenarios(level);
+    beginRun(scenarios?.length ? scenarios[0].key : undefined);
   }
 }
 
