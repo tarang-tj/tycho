@@ -149,11 +149,12 @@ export function createHud(hostEl) {
     endcard.hidden = true;
   }
 
-  function updateScoreboard(levelKey, stats) {
+  /** `levelLabel` is the level's display label (e.g. "Chang'e-4"), not its raw key - L2 fix. */
+  function updateScoreboard(levelLabel, stats) {
     scoreboard.innerHTML = "";
     const title = document.createElement("p");
     title.className = "mission-scoreboard-title";
-    title.textContent = `${levelKey} runs (${sampleNote(stats.n, stats.abandonedCount)})`;
+    title.textContent = `${levelLabel} runs (${sampleNote(stats.n, stats.abandonedCount)})`;
     scoreboard.appendChild(title);
     for (const [label, rate, n] of [
       ["overall", stats.successRateAll, stats.n],

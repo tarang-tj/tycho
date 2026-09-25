@@ -128,7 +128,7 @@ function handleMissionTransition() {
     outcome: mission.outcome, timeSec, distanceM: mission.distanceTraveledM, copilotOn,
   });
   saveScoreboard(scoreboardData);
-  hud.updateScoreboard(currentLevelKey, aggregate(scoreboardData, currentLevelKey));
+  hud.updateScoreboard(LEVELS[currentLevelKey].label, aggregate(scoreboardData, currentLevelKey));
   // The reveal: at mission end, show the TRUE (present) rover position
   // alongside whatever delayed telemetry the player was actually steering
   // by, so the gap between "what you saw" and "where it really was" is visible.
@@ -296,7 +296,7 @@ function recordAbandonedIfActive() {
     outcome: "abandoned", timeSec, distanceM: mission.distanceTraveledM, copilotOn,
   });
   saveScoreboard(scoreboardData);
-  hud.updateScoreboard(currentLevelKey, aggregate(scoreboardData, currentLevelKey));
+  hud.updateScoreboard(LEVELS[currentLevelKey].label, aggregate(scoreboardData, currentLevelKey));
 }
 
 /** Begin (or restart) a run: reset physics/signal/mission state, keeping the already-loaded terrain/scene. */
@@ -424,7 +424,7 @@ async function loadLevel(key, opts = {}) {
     scenarios: getScenarios(level),
     onStart: (scenarioKey) => beginRun(scenarioKey),
   });
-  hud.updateScoreboard(key, aggregate(scoreboardData, key));
+  hud.updateScoreboard(level.label, aggregate(scoreboardData, key));
 
   for (const btn of document.querySelectorAll(".level-btn")) {
     btn.setAttribute("aria-pressed", String(btn.dataset.level === key));

@@ -135,3 +135,22 @@ test("U2: an abandoned outcome has an honest, non-blaming line", () => {
   const m = { ...startMission(createMission("mars", LEVELS.mars), 0), outcome: "abandoned" };
   assert.match(whatHappenedLine(m), /abandoned/i);
 });
+
+// --- L1: every production call site must pass a level/context, not rely
+// on createMission's silent "live" mode default (a future call site that
+// omits it for a plan-mode level would quietly lose the C1 stall
+// protection). This is a static regression guard over web/main.js's source
+// - the only production (non-test) caller of createMission - rather than a
+// runtime assertion inside createMission itself, since createMission's
+// signature is also used directly (context-free) by tests above for
+// levels whose default "live" mode happens to be correct. ---------------
+test("L1: web/main.js never calls createMission with a single argument (no level/context)", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const { fileURLToPath } = await import("node:url");
+  const mainSource = await readFile(fileURLToPath(new URL("../web/main.js", import.meta.url)), "utf8");
+  const calls = mainSource.match(/createMission\([^)]*\)/g) ?? [];
+  assert.ok(calls.length > 0, "precondition: web/main.js should call createMission at least once");
+  for (const call of calls) {
+    assert.ok(call.includes(","), `web/main.js calls createMission without a second (level/context) argument: "${call}"`);
+  }
+});
