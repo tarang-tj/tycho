@@ -12,8 +12,11 @@ assert callable(build_terrain.main)
 assert callable(site_pipeline.process_moon)
 assert callable(site_pipeline.process_mars)
 assert callable(site_pipeline.process_lunokhod)
+assert callable(site_pipeline.process_change4)
+assert callable(site_pipeline.process_apollo17)
 assert callable(site_pipeline.write_body)
-print('pipeline import OK: build_terrain.main + site_pipeline.process_moon/process_mars/process_lunokhod/write_body all present')
+print('pipeline import OK: build_terrain.main + site_pipeline.process_moon/process_mars/'
+      'process_lunokhod/process_change4/process_apollo17/write_body all present')
 "
 # No-arg invocation prints usage and exits 1 (documented CLI contract); no
 # network access happens on this path. Assert that exit code explicitly

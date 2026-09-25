@@ -1,0 +1,44 @@
+{
+  "width": 1024,
+  "height": 1024,
+  "metersPerPixel": 4.9999999999999,
+  "minElev": -2749.071533203125,
+  "maxElev": -2553.713134765625,
+  "heightScale": 195.3583984375,
+  "sizeKm": 5.12,
+  "spawn": {
+    "x": 274,
+    "y": 283
+  },
+  "goal": {
+    "x": 512,
+    "y": 512
+  },
+  "source": {
+    "product": "NAC_DTM_APOLLO17",
+    "url": "https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_DTM_APOLLO17",
+    "download": "http://lroc.sese.asu.edu/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/SDP/NAC_DTM/APOLLO17/NAC_DTM_APOLLO17.TIF",
+    "factsSource": "LROC post \"Spacecraft Related Coordinates - 2016 Update\", https://lroc.im-ldi.com/images/938"
+  },
+  "license": "LROC Reduced Data Record (RDR) products available through the NASA Planetary Data System (PDS) are in the public domain.",
+  "credit": "NASA/GSFC/Arizona State University",
+  "nodataFilledFraction": 0.0,
+  "notes": "Shaded rendering of real LRO NAC DTM elevation (not a photo). Crop is a 5.12km square at native 5 m/px, centered on the pixel of the Apollo 17 Lunar Roving Vehicle's final parked position (a surveyed coordinate from LROC post \"Spacecraft Related Coordinates - 2016 Update\", not a proxy). Goal is the parked rover (\"Apollo 17 rover (parked 1972)\"); spawn is the point 1.5-3km away whose straight drivable line to the rover has the lowest max slope, searched across all compass bearings (no sourced approach direction for the LRV's final short hop back to the parking spot, so a bearing is not fabricated -- the algorithmically best-drivable direction is used instead). mask.bin marks nodata-filled cells (rendered as a hatched no-data texture in albedo.jpg/preview.png); spawn and goal are kept >= 20px clear of them. The rover model in-engine is an illustrative period-accurate silhouette, not a survey model.",
+  "maskFile": "mask.bin",
+  "maskMeaning": "1 = no orbital data (filled), treat as impassable",
+  "siteName": "Taurus-Littrow valley, Apollo 17 site",
+  "goalLabel": "Apollo 17 rover (parked 1972)",
+  "goalLatLon": {
+    "lat": 20.1896,
+    "lon": 30.7769
+  },
+  "spawnLatLon": {
+    "lat": 20.22732,
+    "lon": 30.7352
+  },
+  "lrvElevCitedM": -2628.0,
+  "lrvUncertaintyM": 3.2,
+  "spawnGoalDistanceM": 1651.4,
+  "lineSlopeDegMax": 11.98,
+  "lineSlopeDegMean": 3.22
+}
