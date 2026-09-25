@@ -52,7 +52,7 @@ const syncBody = () => {
 new MutationObserver(syncBody).observe(document.querySelector(".level-select"), { subtree: true, attributes: true, attributeFilter: ["aria-pressed"] });
 select(LEVEL_ORDER[0]);
 
-// New sites (Chang'e-4, Opportunity, Apollo 17) ship as config-driven cards
+// New sites (Chang'e-4, Apollo 17) ship as config-driven cards
 // immediately - the engine already falls back to synthetic terrain with an
 // on-screen banner if a level's assets aren't in this checkout (see
 // terrain-data.js) - but the card itself should say so up front rather than

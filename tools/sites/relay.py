@@ -31,6 +31,12 @@ EARTH_MOON_KM = 384_400.0  # NASA Moon Fact Sheet, semimajor axis
 QUEQIAO_BEYOND_MOON_KM = 65_000.0  # The Planetary Society, nominal L2 halo distance from Moon
 MOON_RADIUS_KM = 1_737.4  # NASA Moon Fact Sheet, mean radius
 
+# Human-readable HUD path label for this relay link. Matches web/levels.js's
+# LEVELS.change4.delay.pathLabel exactly, so the fallback and the real
+# meta.delayModel.pathLabel read the same on screen either way (see
+# resolveDelayLabel in web/levels.js).
+RELAY_PATH_LABEL = "Earth > Queqiao relay > far side"
+
 
 def relay_light_time_sec(earth_moon_km: float = EARTH_MOON_KM,
                           queqiao_beyond_moon_km: float = QUEQIAO_BEYOND_MOON_KM,

@@ -350,7 +350,7 @@ function beginRun(scenarioKey) {
     const relayLabel = resolveDelayLabel(level, terrain.meta);
     if (relayLabel) {
       el.delayNote.hidden = false;
-      el.delayNote.textContent = `Relay path: ${relayLabel} (${delaySec.toFixed(2)} s one-way).`;
+      el.delayNote.textContent = `Relay path: ${relayLabel}. About ${delaySec.toFixed(2)} s one way (approximate model).`;
     } else {
       el.delayNote.hidden = true;
     }

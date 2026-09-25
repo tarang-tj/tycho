@@ -121,12 +121,13 @@ button { font: inherit; color: inherit; }
 body.title-open .title-screen { opacity: 1; visibility: visible; transition: opacity 0.7s ease; }
 body.title-open .topbar, body.title-open .hud, body.title-open .terrain-banner, body.title-open .delay-note { opacity: 0; pointer-events: none; }
 body.title-open .hud { transform: translateY(10px); }
-.title-inner { width: min(720px, 100%); padding: 6vh 0 5vh 6vw; }
+.title-inner { width: min(900px, 100%); padding: 6vh 0 5vh 6vw; }
 .title-eyebrow { margin: 0 0 1.1rem; font-family: var(--mono); font-size: 0.82rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); }
 .wordmark { margin: 0; font-family: var(--cond); font-weight: 600; font-size: clamp(4.2rem, 11vw, 9.5rem); line-height: 0.86; letter-spacing: 0.14em; color: #f2f0ea; margin-left: -0.04em; }
 .title-sub { margin: 0.9rem 0 0; font-family: var(--cond); font-size: clamp(1.3rem, 2.4vw, 1.75rem); color: var(--accent); letter-spacing: 0.03em; }
 .title-story { margin: 1rem 0 1.8rem; max-width: 44ch; color: #b9b8b3; font-size: 0.95rem; line-height: 1.6; }
-.level-cards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.7rem; margin-bottom: 1.3rem; }
+.level-cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.6rem; margin-bottom: 1.3rem; }
+@media (max-width: 980px) { .level-cards { grid-template-columns: 1fr 1fr 1fr; gap: 0.7rem; } }
 .level-card {
   display: flex; flex-direction: column; align-items: flex-start; gap: 0.2rem; padding: 0.95rem 1rem 1rem; text-align: left; cursor: pointer;
   background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line-strong); border-radius: 6px; transition: border-color 0.25s, background 0.25s;
@@ -137,7 +138,6 @@ body.title-open .hud { transform: translateY(10px); }
 .level-card[data-level="tycho"] { --card-accent: #c9c8ff; }
 .level-card[data-level="mars"] { --card-accent: #ffb27a; }
 .level-card[data-level="change4"] { --card-accent: #d6c37a; }
-.level-card[data-level="opportunity"] { --card-accent: #e08a5c; }
 .level-card[data-level="apollo17"] { --card-accent: #cfd4d8; }
 .level-card--pending { opacity: 0.7; }
 .level-card--pending .card-note { color: var(--muted); font-style: italic; }

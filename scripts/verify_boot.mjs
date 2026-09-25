@@ -285,7 +285,7 @@ try {
   console.log("Mars: co-pilot HOLD reached the player as mission.status === 'held'.");
 
   // ---------------------------------------------------------------------
-  // Wave-1 sites (Chang'e-4, Opportunity, Apollo 17): every level whose real
+  // Wave-1 sites (Chang'e-4, Apollo 17): every level whose real
   // assets are present in this checkout gets the same WebGL + real-DEM +
   // positive-delay proof as Lunokhod/Tycho/Mars above. A level with no
   // shipped assets yet is logged, not asserted against - it still boots via

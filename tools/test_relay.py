@@ -7,7 +7,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from sites.relay import SPEED_OF_LIGHT_KM_S, relay_light_time_sec
+from sites.relay import RELAY_PATH_LABEL, SPEED_OF_LIGHT_KM_S, relay_light_time_sec
 
 
 class RelayLightTimeTests(unittest.TestCase):
@@ -37,6 +37,14 @@ class RelayLightTimeTests(unittest.TestCase):
         direct_sec = 384_400.0 / SPEED_OF_LIGHT_KM_S
         relay_sec, _ = relay_light_time_sec()
         self.assertLess(direct_sec, relay_sec)
+
+    def test_path_label_matches_web_levels_js_fallback_exactly(self):
+        # web/levels.js's LEVELS.change4.delay.pathLabel is the fallback shown
+        # when an asset ships no meta.delayModel.pathLabel yet; once an asset
+        # DOES ship one (as change4.py now does), it must read identically so
+        # switching from the fallback to the real value is invisible on the
+        # HUD wording, only in provenance.
+        self.assertEqual(RELAY_PATH_LABEL, "Earth > Queqiao relay > far side")
 
 
 if __name__ == "__main__":

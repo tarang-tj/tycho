@@ -33,9 +33,13 @@ test("a plan-mode level always has a mars-scenarios delay, and vice versa", () =
 
 test("getScenarios returns MARS_SCENARIOS only for mars-scenarios levels", () => {
   assert.equal(getScenarios(LEVELS.mars), MARS_SCENARIOS);
-  assert.equal(getScenarios(LEVELS.opportunity), MARS_SCENARIOS);
   assert.equal(getScenarios(LEVELS.lunokhod), null);
   assert.equal(getScenarios(LEVELS.change4), null);
+});
+
+test("opportunity was removed: no LEVELS entry and not in LEVEL_ORDER (no sourced final rover position - see README's Next note)", () => {
+  assert.equal(LEVELS.opportunity, undefined);
+  assert.ok(!LEVEL_ORDER.includes("opportunity"));
 });
 
 test("resolveScenario defaults to typical and finds a scenario by key", () => {
@@ -52,8 +56,8 @@ test("resolveDelaySec: direct delay is the fixed configured value", () => {
 test("resolveDelaySec: mars-scenarios delay compresses the real minutes by the scenario's factor", () => {
   const sec = resolveDelaySec(LEVELS.mars, {}, "close");
   assert.equal(sec, (3 * 60) / 15);
-  const secOpportunity = resolveDelaySec(LEVELS.opportunity, {}, "conjunction");
-  assert.equal(secOpportunity, (22 * 60) / 55);
+  const secConjunction = resolveDelaySec(LEVELS.mars, {}, "conjunction");
+  assert.equal(secConjunction, (22 * 60) / 55);
 });
 
 test("resolveDelaySec: relay delay reads terrain.meta.delayModel.oneWaySec when the asset ships one", () => {
@@ -74,6 +78,16 @@ test("resolveDelayLabel: only relay-type levels get a label; real path label win
   assert.match(resolveDelayLabel(LEVELS.change4, {}), /fallback/i, "no meta.delayModel yet: label must say so, not invent a path");
   const real = resolveDelayLabel(LEVELS.change4, { delayModel: { pathLabel: "Earth > Queqiao > far side" } });
   assert.equal(real, "Earth > Queqiao > far side");
+});
+
+test("resolveDelayLabel: change4's shipped assets/change4/meta.json ships a real pathLabel and never shows the fallback wording", () => {
+  const metaPath = fileURLToPath(new URL("../assets/change4/meta.json", import.meta.url));
+  const meta = JSON.parse(readFileSync(metaPath, "utf8"));
+  assert.equal(typeof meta.delayModel?.pathLabel, "string", "assets/change4/meta.json must ship delayModel.pathLabel");
+  assert.ok(meta.delayModel.pathLabel.length > 0);
+  const label = resolveDelayLabel(LEVELS.change4, meta);
+  assert.equal(label, meta.delayModel.pathLabel);
+  assert.doesNotMatch(label, /fallback/i, "change4 ships a real delay model; the HUD must never show the fallback wording for it");
 });
 
 // --- Regression: the level-identity string checks this wave removed must not creep back in ---

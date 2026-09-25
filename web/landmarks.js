@@ -5,13 +5,11 @@
 // heading via resolveLandmarkHeadingDeg() below.
 import { createParkedLunokhod } from "./lunokhod-parked.js";
 import { createChange4Lander } from "./change4-lander.js";
-import { createMerRover } from "./mer-rover.js";
 import { createApolloLrv } from "./apollo-lrv.js";
 
 const BUILDERS = {
   lunokhod2: createParkedLunokhod,
   change4: createChange4Lander,
-  mer: createMerRover,
   lrv: createApolloLrv,
 };
 

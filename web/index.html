@@ -36,11 +36,10 @@
     </div>
     <div class="level-select" role="group" aria-label="Level select">
       <button type="button" data-level="lunokhod" class="level-btn" aria-pressed="true">Lunokhod <span>Moon</span></button>
+      <button type="button" data-level="change4" class="level-btn" aria-pressed="false">Chang'e-4 <span>Moon</span></button>
+      <button type="button" data-level="apollo17" class="level-btn" aria-pressed="false">Apollo 17 <span>Moon</span></button>
       <button type="button" data-level="tycho" class="level-btn" aria-pressed="false">Tycho <span>Moon</span></button>
       <button type="button" data-level="mars" class="level-btn" aria-pressed="false">Jezero <span>Mars</span></button>
-      <button type="button" data-level="change4" class="level-btn" aria-pressed="false">Chang'e-4 <span>Moon</span></button>
-      <button type="button" data-level="opportunity" class="level-btn" aria-pressed="false">Opportunity <span>Mars</span></button>
-      <button type="button" data-level="apollo17" class="level-btn" aria-pressed="false">Apollo 17 <span>Moon</span></button>
     </div>
     <button type="button" id="aboutDataBtn" class="about-data-btn" aria-haspopup="dialog" aria-controls="aboutDataPanel">About the data</button>
   </header>
@@ -52,9 +51,12 @@
         <button type="button" id="aboutDataClose" class="about-data-close" aria-label="Close">&times;</button>
       </div>
       <dl class="about-data-list">
-        <div><dt>Elevation is real</dt><dd>Lunokhod: LROC NAC DTM NAC_DTM_LUNOKHOD2, 5 m/px native, NASA/GSFC/Arizona State University. Tycho: LROC NAC DTM NAC_DTM_TYCHOPK01, 2 m/px native, resampled to 2.34 m/px for this crop, NASA/GSFC/Arizona State University. Mars (Jezero): USGS CTX DEM M20_JezeroCrater_CTXDEM_20m, 20 m/px, NASA/JPL-Caltech/MSSS/USGS. All public domain / CC0. Chang'e-4, Opportunity, and Apollo 17 use the DEM product named in each level's own asset metadata once shipped; any level still running on synthetic test terrain says so on screen.</dd></div>
+        <div><dt>Elevation is real</dt><dd>Lunokhod: LROC NAC DTM NAC_DTM_LUNOKHOD2, 5 m/px native, NASA/GSFC/Arizona State University. Tycho: LROC NAC DTM NAC_DTM_TYCHOPK01, 2 m/px native, resampled to 2.34 m/px for this crop, NASA/GSFC/Arizona State University. Mars (Jezero): USGS CTX DEM M20_JezeroCrater_CTXDEM_20m, 20 m/px, NASA/JPL-Caltech/MSSS/USGS. Chang'e-4: LROC NAC DTM NAC_DTM_CHANGE4, 5 m/px native, NASA/GSFC/Arizona State University. Apollo 17: LROC NAC DTM NAC_DTM_APOLLO17, 5 m/px native, NASA/GSFC/Arizona State University. All public domain / CC0.</dd></div>
         <div><dt>Lunokhod 2's parked position is real</dt><dd>25.830°N, 30.914°E, facing southeast with its lid still open, per LROC post 699 "Lunokhod 2 Revisited". The rover model shown there is an illustrative period-accurate silhouette, not a survey model.</dd></div>
-        <div><dt>Other landmark models are illustrative</dt><dd>Chang'e-4's lander, Opportunity's rover, and Apollo 17's LRV are shown at each level's goal as illustrative type-accurate silhouettes, not survey models. Their position and facing (when known) come from that level's own data files, not invented here; a level without a sourced facing shows its landmark facing south by default.</dd></div>
+        <div><dt>Chang'e-4's landing position is real</dt><dd>45.4446°S, 177.5991°E, elevation -5935 m, landed 3 January 2019, per Liu, B. et al. 2019, "Descent trajectory reconstruction and landing site positioning of Chang'E-4 on the lunar farside", Nature Communications 10:4229.</dd></div>
+        <div><dt>The Apollo 17 LRV's parked position is real</dt><dd>20.1896°N, 30.7769°E, elevation -2628 m (±3.2 m), per LROC's "Spacecraft Related Coordinates - 2016 Update". The astronauts drove it there themselves, with no delay at all; TYCHO drives to it remotely from Earth, 1.28 s behind.</dd></div>
+        <div><dt>Other landmark models are illustrative</dt><dd>Chang'e-4's lander and Apollo 17's LRV are shown at each level's goal as illustrative type-accurate silhouettes, not survey models. Their position and facing (when known) come from that level's own data files, not invented here; a level without a sourced facing shows its landmark facing south by default.</dd></div>
+        <div><dt>Chang'e-4's relay delay is an approximate model</dt><dd>Chang'e-4 sits on the lunar far side, with no direct line of sight to Earth, so its signal relays through China's Queqiao satellite at the Earth-Moon L2 point. The one-way delay shown (about 1.71 s) is a simplified collinear estimate (Earth-Moon distance plus Queqiao's distance beyond the Moon, from the NASA Moon Fact Sheet and The Planetary Society's reporting on Queqiao's orbit), not a precise ephemeris: Queqiao's real halo orbit varies roughly 47,000-79,000 km from the Moon, and the lander is not exactly at the sub-L2 point. See <code>tools/sites/relay.py</code> for the full model and sources.</dd></div>
         <div><dt>Surface detail is procedural</dt><dd>Small craters, rocks, and regolith texture near the rover are generated decoration, not measured. Only the large-scale elevation shape comes from the real DEM.</dd></div>
         <div><dt>Earth's position is approximate</dt><dd>Shown at its real apparent size and lit consistently with the sun, but its sky position and the geography visible on it are illustrative, not a precise ephemeris.</dd></div>
         <div><dt>Mars delay is compressed for play</dt><dd>The real one-way light-time delay is 3 to 22 minutes depending on where Earth and Mars are in their orbits. This game compresses it 15x to 55x (labeled on screen each run) so a sol plan resolves in seconds, not real minutes.</dd></div>
@@ -99,6 +101,18 @@
           <span class="card-delay">1.28 s</span>
           <span class="card-note">Drive to where Lunokhod 2 still sits</span>
         </button>
+        <button type="button" class="level-card" role="radio" aria-checked="false" data-level="change4">
+          <span class="card-name">Chang'e-4</span>
+          <span class="card-meta">Moon · Von Karman crater, far side</span>
+          <span class="card-delay">via relay</span>
+          <span class="card-note">Drive to China's far-side lander</span>
+        </button>
+        <button type="button" class="level-card" role="radio" aria-checked="false" data-level="apollo17">
+          <span class="card-name">Apollo 17</span>
+          <span class="card-meta">Moon · Taurus-Littrow valley</span>
+          <span class="card-delay">1.28 s</span>
+          <span class="card-note">Reach the LRV the astronauts drove here</span>
+        </button>
         <button type="button" class="level-card" role="radio" aria-checked="false" data-level="tycho">
           <span class="card-name">Tycho</span>
           <span class="card-meta">Moon · Tycho central peak</span>
@@ -110,24 +124,6 @@
           <span class="card-meta">Mars · Jezero crater</span>
           <span class="card-delay">3 to 22 min</span>
           <span class="card-note">Plan the sol, trust the co-pilot</span>
-        </button>
-        <button type="button" class="level-card" role="radio" aria-checked="false" data-level="change4">
-          <span class="card-name">Chang'e-4</span>
-          <span class="card-meta">Moon · Von Karman crater, far side</span>
-          <span class="card-delay">via relay</span>
-          <span class="card-note">Drive to China's far-side lander</span>
-        </button>
-        <button type="button" class="level-card" role="radio" aria-checked="false" data-level="opportunity">
-          <span class="card-name">Opportunity</span>
-          <span class="card-meta">Mars · Perseverance Valley</span>
-          <span class="card-delay">3 to 22 min</span>
-          <span class="card-note">Reach the rover silenced by a dust storm</span>
-        </button>
-        <button type="button" class="level-card" role="radio" aria-checked="false" data-level="apollo17">
-          <span class="card-name">Apollo 17</span>
-          <span class="card-meta">Moon · Taurus-Littrow valley</span>
-          <span class="card-delay">1.28 s</span>
-          <span class="card-note">Reach the LRV the astronauts drove here</span>
         </button>
       </div>
       <button type="button" class="title-start" id="titleStart">Start</button>

@@ -309,7 +309,7 @@ for (const scenario of MARS_SCENARIOS) {
   });
 }
 
-// --- New wave-1 sites (Chang'e-4, Opportunity, Apollo 17): generic bots ----
+// --- New wave-1 sites (Chang'e-4, Apollo 17): generic bots ----
 //
 // Same shapes as the hand-tuned Lunokhod (live, pursuit steering) and Mars
 // (sol plan) bots above, generalized over any level config so a new site's

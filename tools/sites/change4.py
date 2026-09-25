@@ -22,7 +22,7 @@ from tiff_ifd import read_header
 
 from .common import (CACHE_DIR, MIN_CLEAR_OF_MASK_PX, enforce_clearance, line_slope_stats,
                       pick_best_spawn, shade_and_slope_1024, write_body)
-from .relay import relay_light_time_sec
+from .relay import RELAY_PATH_LABEL, relay_light_time_sec
 
 Image.MAX_IMAGE_PIXELS = None
 
@@ -140,6 +140,7 @@ def process_change4() -> None:
         "delayModel": {
             "type": "relay",
             "oneWaySec": round(one_way_sec, 2),
+            "pathLabel": RELAY_PATH_LABEL,
             "legsKm": [round(legs_km[0], 0), round(legs_km[1], 0)],
             "sources": [
                 "NASA Moon Fact Sheet (Earth-Moon 384400 km, Moon radius 1737.4 km), "

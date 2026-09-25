@@ -15,7 +15,9 @@ import { BRIEFS } from "./mission.js";
 
 // Mars scenarios: honest real one-way delay, compressed for play. "Typical"
 // matches the plan's worked example (12 min compressed 40x -> 18s wait).
-// Shared by every "mars-scenarios" delay-type level (Jezero, Opportunity).
+// Shared by every "mars-scenarios" delay-type level (currently just Jezero;
+// Opportunity would have been a second one, but it's blocked - see the
+// LEVEL_ORDER comment below).
 export const MARS_SCENARIOS = [
   { key: "close", label: "Close approach", realMinutes: 3, compression: 15 },
   { key: "typical", label: "Typical", realMinutes: 12, compression: 40 },
@@ -63,14 +65,6 @@ export const LEVELS = {
     briefLines: BRIEFS.change4,
     arrivalLine: "You reached the Chang'e-4 lander. It has sat on the lunar far side since January 2019.",
   },
-  opportunity: {
-    key: "opportunity", assetKey: "opportunity", planet: "mars", mode: "plan",
-    delay: { type: "mars-scenarios" },
-    landmarkKind: "mer",
-    label: "Opportunity", siteLabel: "Perseverance Valley, Endeavour crater",
-    briefLines: BRIEFS.opportunity,
-    arrivalLine: "You reached Opportunity. It drove here and went silent in a 2018 dust storm.",
-  },
   apollo17: {
     key: "apollo17", assetKey: "apollo17", planet: "moon", mode: "live",
     delay: { type: "direct", oneWaySec: 1.28 },
@@ -81,8 +75,18 @@ export const LEVELS = {
   },
 };
 
-// Level keys in the order they cycle (title screen arrow keys, etc).
-export const LEVEL_ORDER = ["lunokhod", "tycho", "mars", "change4", "opportunity", "apollo17"];
+// Level keys in the order they cycle (title screen arrow keys, level cards,
+// top-bar buttons). Grouped by mode: the four "live" Moon sites first,
+// easiest/most-immediate first (Lunokhod, Chang'e-4, Apollo 17 are all a
+// short drive to a real parked object), Tycho's steeper climb next, then the
+// one "plan" site (Jezero) last since it's a different mechanic (sol plan +
+// co-pilot) introduced only after the player already understands live
+// driving. Opportunity was dropped: TYCHO's premise is real terrain, and no
+// primary source for Opportunity's precise final position was found (see
+// plans/260923-2234-tycho-rover/levelup-v3/reports/w1-d-data.md) - shipping
+// it on synthetic terrain would contradict that premise, so it's cut
+// entirely rather than shipped fake. See README's "Next" note.
+export const LEVEL_ORDER = ["lunokhod", "change4", "apollo17", "tycho", "mars"];
 
 /** Resolve a Mars-scenarios-type delay scenario by key, defaulting to "typical" if unknown/omitted. */
 export function resolveScenario(scenarioKey) {

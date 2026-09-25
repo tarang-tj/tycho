@@ -34,11 +34,6 @@ export const BRIEFS = {
     "One-way delay via the Queqiao relay: close enough to steer live.",
     "Drive to where China's Chang'e-4 lander has sat since January 2019, without exceeding the slope limit or stalling out.",
   ],
-  opportunity: [
-    "OPPORTUNITY - MARS, PERSEVERANCE VALLEY",
-    "The one-way delay is minutes, so you are watching the past. Place waypoints, then uplink the plan.",
-    "TYCHO's co-pilot drives the plan under the guardrails you set, toward the rover that went silent in a 2018 dust storm.",
-  ],
   apollo17: [
     "APOLLO 17 - MOON, TAURUS-LITTROW VALLEY",
     "One-way delay 1.28 s: close enough to steer live.",
@@ -134,7 +129,7 @@ export function updateMission(mission, { visibleTelemetry, simTime, terrain, tel
   // stamped by the caller - see main.js's tickPhysics) - never at the
   // rover's true present-time delivery moment, which the player can't see
   // yet (C1/H1). Keyed on mode, not a specific level key, so every
-  // plan-mode level (Jezero, Opportunity, ...) gets the same protection.
+  // plan-mode level (Jezero, or any future one) gets the same protection.
   const stallEligible = mission.mode !== "plan" || state.planActive;
   if (stallEligible && distToGoal != null) {
     if (distToGoal < m.progressBestM - STALL_PROGRESS_EPS_M) {

@@ -212,7 +212,7 @@ export function createScene(canvas, terrain, opts = {}) {
   if (goalPx) overlays.setGoal(goalPx.x * mpp, goalPx.y * mpp);
 
   // U1: on levels with a real, still-parked landmark at the goal (Lunokhod,
-  // Chang'e-4, Opportunity, Apollo 17 - see opts.landmarkKind/web/levels.js),
+  // Chang'e-4, Apollo 17 - see opts.landmarkKind/web/levels.js),
   // render an illustrative model there so it's visible on approach, not just
   // a HUD marker (see web/landmarks.js), and a floating label naming it
   // (goalLabel from the asset's own meta.json, never invented here).
