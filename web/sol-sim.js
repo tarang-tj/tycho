@@ -108,18 +108,32 @@ export function planLegsWithBoundaries(spawn, waypoints, terrain, g) {
  * "arrived" the mission can (correctly) end via the 15 m goal-arrival radius
  * before the rover closes to within the final waypoint's own 6 m arrival
  * radius, which must not read as "unreached" when the plan in fact
- * succeeded; "held" is already fully decided at planning time, before any
- * driving happens, so it never needs a drive-time downgrade either.
+ * succeeded.
+ *
+ * A plan-time "held" (a later leg's planLegsWithBoundaries call returned
+ * HOLD) sets autopilot.holdReason from the very first tick, which zeroes
+ * control immediately (see autopilotStep above) - so `finalIndex` stays 0
+ * for the whole run and EVERY earlier leg planLegsWithBoundaries marked "ok"
+ * (a route existed for it) was in fact never driven at all. Routing "held"
+ * through this same downgrade (finalIndex 0 is never past any leg's
+ * legEndIndex) turns those into "unreached" rather than leaving them read as
+ * completed in the share grid (review finding 7).
  * Exported for the same reason as `planLegsWithBoundaries` above.
  */
 export function finalizeLegOutcomes(legOutcomes, legEndIndex, finalIndex, outcome) {
-  if (outcome !== "tipped" && outcome !== "stalled") return legOutcomes;
+  if (outcome !== "tipped" && outcome !== "stalled" && outcome !== "held") return legOutcomes;
   const result = [...legOutcomes];
   for (let i = 0; i < result.length; i++) {
     if (result[i] !== "ok") break; // a held/unreached leg means nothing after it was ever attempted
     if (finalIndex > legEndIndex[i]) continue; // fully driven
     result[i] = outcome === "tipped" ? "tipped" : "unreached";
-    for (let j = i + 1; j < result.length; j++) result[j] = "unreached";
+    // Only downgrade legs that were still "ok" (planned, never driven);
+    // never overwrite a "held" entry - that IS the leg the plan-time HOLD
+    // happened on, and losing that label to a generic "unreached" would
+    // hide WHY the plan never drove (review finding 7).
+    for (let j = i + 1; j < result.length; j++) {
+      if (result[j] === "ok") result[j] = "unreached";
+    }
     break;
   }
   return result;

@@ -74,14 +74,16 @@ export async function runChunkedEnsemble({ terrain, spawn, waypoints, guardrails
 /**
  * Run a Flight Rules dry run: N=100 seeded headless sols of the current
  * plan (see mars-run.js for why N=100). Tries a module Worker first
- * (ensemble-worker.js, off the main thread entirely); falls back to the
- * same-thread chunked run above if module Workers can't be constructed or
- * error out. `assetKey` is only used by the Worker path (it independently
- * re-fetches terrain - see ensemble-worker.js's header comment); `terrain`
- * (the caller's already-loaded terrain object) is only used by the
- * fallback path.
+ * (ensemble-worker.js, off the main thread entirely), handing it the
+ * caller's ALREADY-LOADED terrain (raw elevations/mask arrays + meta) so it
+ * never re-fetches the asset files itself; falls back to the same-thread
+ * chunked run above - on this same real terrain - if module Workers can't
+ * be constructed, error out, or report failure (`ok: false`). The worker
+ * never invents synthetic terrain on a failure (review finding 3): any
+ * failure to build/run against the real terrain always lands here, on the
+ * real terrain, never a silent synthetic-terrain prediction.
  */
-export function runDryRun({ terrain, assetKey, spawn, waypoints, guardrails, N = DRY_RUN_N, baseSeed = DRY_RUN_BASE_SEED, driftPct }, { onProgress } = {}) {
+export function runDryRun({ terrain, spawn, waypoints, guardrails, N = DRY_RUN_N, baseSeed = DRY_RUN_BASE_SEED, driftPct }, { onProgress } = {}) {
   return new Promise((resolve, reject) => {
     const fallback = () => runChunkedEnsemble({ terrain, spawn, waypoints, guardrails, N, baseSeed, driftPct }, onProgress).then(resolve, reject);
 
@@ -100,7 +102,7 @@ export function runDryRun({ terrain, assetKey, spawn, waypoints, guardrails, N =
       settled = true;
       worker.terminate();
       if (event.data.ok) resolve(event.data.result);
-      else reject(new Error(event.data.error));
+      else fallback(); // the worker ran but couldn't build/use the real terrain: still answer the dry run, on the main thread's real terrain
     });
     worker.addEventListener("error", () => {
       if (settled) return;
@@ -108,6 +110,12 @@ export function runDryRun({ terrain, assetKey, spawn, waypoints, guardrails, N =
       worker.terminate();
       fallback(); // the Worker itself failed to boot/run: still answer the dry run, just on the main thread
     });
-    worker.postMessage({ requestId, assetKey, spawn, waypoints, guardrails, N, baseSeed, driftPct });
+    worker.postMessage({
+      requestId, spawn, waypoints, guardrails, N, baseSeed, driftPct,
+      terrain: {
+        width: terrain.width, height: terrain.height, metersPerPixel: terrain.metersPerPixel,
+        synthetic: terrain.synthetic, meta: terrain.meta, elevations: terrain.elevations, mask: terrain.mask,
+      },
+    });
   });
 }

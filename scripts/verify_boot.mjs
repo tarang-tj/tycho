@@ -339,7 +339,12 @@ try {
       window.TYCHO.debug.getLiveLoopCount(),
       !document.querySelector(".mission-dry-run-result")?.hidden,
     ]);
-    if (frameCount > frameCountAtClick) sawFrameAdvance = true;
+    // Review finding 4: only count a frame advance seen WHILE the result is
+    // still hidden - the poll that finally sees the result (ends waitUntil)
+    // would otherwise let a fully synchronous, main-thread-blocking dry run
+    // pass this check too, since frameCount always advances at least once
+    // between the click and the result becoming visible either way.
+    if (frameCount > frameCountAtClick && !resultVisible) sawFrameAdvance = true;
     if (liveLoopCount !== 1) sawSingleLiveLoop = false;
     return resultVisible;
   }, 20000, "the dry-run result panel never became visible");
@@ -352,6 +357,81 @@ try {
   assert.match(dryRunText, /100 simulated sols:.*arrived.*held.*tipped.*stalled/, `dry run did not render 100 results with a full outcome breakdown: "${dryRunText}"`);
   assert.match(dryRunText, /Modeled drift: about 1% of distance \(a game assumption, not a measured rover figure\)/, `dry run result is missing the ALWAYS-present drift label: "${dryRunText}"`);
   console.log(`Mars: Dry run rendered 100 results without blocking the render loop - "${dryRunText}"`);
+
+  // ---------------------------------------------------------------------
+  // Flight Rules: a dry run left in flight across a retry, or a plan
+  // changed after a completed dry run, must never show a stale or
+  // borrowed prediction on the end card (review findings 1 and 2). Both
+  // scenarios below drive through the real DOM (dry-run/uplink buttons),
+  // never the debug API, since the bug lived in main.js's onDryRun/
+  // onUplink closures those buttons actually call.
+  // ---------------------------------------------------------------------
+  async function placeMarsWaypoint(px, py) {
+    const box = await page.locator(".mission-minimap").boundingBox();
+    await page.click(".mission-minimap", { position: { x: (px / marsTerrainW) * box.width, y: (py / marsTerrainW) * box.height } });
+  }
+  // A 20 m (the UI's own minimum) autonomous-distance cap forces an
+  // immediate, deterministic plan-time HOLD on any real waypoint - a fast
+  // terminal state, same technique as the co-pilot HOLD block above, but
+  // via the real plan-panel guardrail input this time.
+  async function setTinyDistanceCap() {
+    await page.fill('.mission-guardrail-row input[min="20"]', "20");
+  }
+
+  // Finding 1: press Dry run, then retry BEFORE that dry run resolves. The
+  // in-flight summary must never apply to the NEW run's own uplink.
+  await page.evaluate(() => window.TYCHO.debug.startMission("close"));
+  await page.waitForSelector(".mission-minimap", { state: "visible" });
+  await placeMarsWaypoint(476, 476);
+  await page.waitForFunction(() => !document.querySelector(".mission-dry-run-btn")?.disabled, null, { timeout: 5000 });
+  await page.click(".mission-dry-run-btn"); // fires an async dry run; deliberately NOT awaited
+
+  await page.evaluate(() => window.TYCHO.debug.startMission("close")); // retry mid-flight
+  await page.waitForSelector(".mission-minimap", { state: "visible" });
+  // Give the STALE dry run (started on the run this replaced) time to
+  // actually resolve before this run uplinks - the leak only shows up once
+  // that old promise's `.then` has fired, which without the epoch guard
+  // overwrites whatever this run's own reset already cleared. 100 sols
+  // over the real Mars DEM finished well under this in every run observed
+  // proving the Dry run block above.
+  await page.waitForTimeout(6000);
+  await placeMarsWaypoint(476, 476);
+  await setTinyDistanceCap();
+  await page.click(".mission-uplink-btn"); // uplinked with NO dry run pressed on THIS run
+
+  // Two one-way delays: the plan must first ARRIVE (uplink delay) before
+  // the co-pilot's resulting HOLD is even decided, then that HOLD's
+  // telemetry must itself arrive (downlink delay) before mission.status
+  // reads "held" - same round trip the co-pilot HOLD block above waits out.
+  await waitUntil(async () => {
+    const m = await page.evaluate(() => window.TYCHO.debug.getMission());
+    return m.status === "held";
+  }, marsDelaySec * 1000 * 2 + 6000, "the retried Mars run never reached a terminal HOLD");
+  let predicted = await page.evaluate(() => !!document.querySelector(".mission-endcard-predicted"));
+  assert.equal(predicted, false, "a dry run still in flight from the PREVIOUS run leaked its prediction into this run's end card (review finding 1)");
+  console.log("Mars: a dry run left in flight across a retry did not leak into the next run's end card.");
+
+  // Finding 2: complete a dry run, THEN change the plan (add a waypoint)
+  // before uplinking. The now-stale summary (computed against the OLD
+  // plan) must not be credited to the different, uplinked plan.
+  await page.evaluate(() => window.TYCHO.debug.startMission("close"));
+  await page.waitForSelector(".mission-minimap", { state: "visible" });
+  await placeMarsWaypoint(476, 476);
+  await page.waitForFunction(() => !document.querySelector(".mission-dry-run-btn")?.disabled, null, { timeout: 5000 });
+  await page.click(".mission-dry-run-btn");
+  await page.waitForFunction(() => !document.querySelector(".mission-dry-run-result")?.hidden, null, { timeout: 20000 });
+  await placeMarsWaypoint(447, 427); // change the plan AFTER the dry run finished
+  await setTinyDistanceCap();
+  await page.click(".mission-uplink-btn");
+
+  await waitUntil(async () => {
+    const m = await page.evaluate(() => window.TYCHO.debug.getMission());
+    return m.status === "held";
+  }, marsDelaySec * 1000 * 2 + 6000, "the plan-changed Mars run never reached a terminal HOLD");
+  predicted = await page.evaluate(() => !!document.querySelector(".mission-endcard-predicted"));
+  assert.equal(predicted, false, "a dry-run summary computed against a DIFFERENT (earlier) plan was credited to the uplinked plan (review finding 2)");
+  console.log("Mars: changing the plan after a completed dry run correctly dropped the stale prediction.");
+
   // Restore the title-open state this block removed (real-DOM-only, see
   // above) so every level switch below still gets its normal first-paint
   // camera behavior (scene.js's camRig only snaps/starts its cinematic

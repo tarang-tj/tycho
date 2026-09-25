@@ -20,9 +20,11 @@ export const DRY_RUN_BASE_SEED = 0;
  * Pick a fresh seed for the REAL Mars run, guaranteed to fall outside the
  * dry run's reserved seed range - so the real run is never a re-play of a
  * seed the player already saw summarized in the dry run.
- * `overrideSeed`, if a finite number (the debug API, for deterministic
- * tests), is returned as-is. `randomSource` defaults to the real Web
- * Crypto API and is injectable for unit tests.
+ * `overrideSeed`, if a finite number, is returned as-is - an injection point
+ * for deterministic unit tests (see mars-run.test.mjs); main.js always
+ * calls this with no arguments, so nothing in the shipped game overrides it.
+ * `randomSource` defaults to the real Web Crypto API and is injectable for
+ * unit tests.
  */
 export function pickRealRunSeed({ overrideSeed = null, randomSource = globalThis.crypto } = {}) {
   if (Number.isFinite(overrideSeed)) return overrideSeed >>> 0;
@@ -77,6 +79,18 @@ export function finalizeMarsLegOutcomes(autopilot, missionOutcome) {
 const OUTCOME_WORD = { arrived: "arrived", held: "held", tipped: "tipped", stalled: "stalled" };
 
 /**
+ * The ALWAYS-present Flight Rules drift disclosure, e.g.:
+ *   "Modeled drift: about 1% of distance (a game assumption, not a measured rover figure)"
+ * The single source for this text (review finding 5: DRY) - every place the
+ * drift model's output appears on screen (the dry-run panel, the end card's
+ * predicted-vs-actual line, the scoreboard's calibration row) reuses this,
+ * instead of each re-typing its own copy that could drift out of sync.
+ */
+export function driftLabel(driftPct = DRIFT_PCT) {
+  return `Modeled drift: about ${driftPct}% of distance (a game assumption, not a measured rover figure)`;
+}
+
+/**
  * Plain-text Flight Rules dry-run result, e.g.:
  *   "100 simulated sols: 49 arrived, 0 held, 0 tipped, 51 stalled (95% range for arrival: 39-59%)"
  *   "Modeled drift: about 1% of distance (a game assumption, not a measured rover figure)"
@@ -88,19 +102,32 @@ export function formatDryRunSummary({ n, counts, wilson95 }, driftPct = DRIFT_PC
   const pct = (v) => Math.round(v * 100);
   const range = `${pct(wilson95[0])}-${pct(wilson95[1])}%`;
   const resultLine = `${n} simulated sols: ${counts.arrived} arrived, ${counts.held} held, ${counts.tipped} tipped, ${counts.stalled} stalled (95% range for arrival: ${range})`;
-  const driftLine = `Modeled drift: about ${driftPct}% of distance (a game assumption, not a measured rover figure)`;
-  return { resultLine, driftLine };
+  return { resultLine, driftLine: driftLabel(driftPct) };
 }
 
 /**
  * End-card "predicted vs actual" line, e.g.:
- *   "Dry run predicted 49% (range 39-59%); this run: arrived"
+ *   "Dry run predicted 49% (range 39-59%); this run: arrived. Modeled drift:
+ *   about 1% of distance (a game assumption, not a measured rover figure)"
  * Returns null if no dry run was done before uplink (`predicted` is null),
  * so the caller can skip the line entirely rather than show a blank one.
+ * Carries the same drift label formatDryRunSummary's driftLine does (review
+ * finding 5): the predicted number is a product of the drift model, so it
+ * must be labeled everywhere it appears, not just on the panel it came from.
  */
-export function formatPredictedLine(predicted, outcome) {
+export function formatPredictedLine(predicted, outcome, driftPct = DRIFT_PCT) {
   if (!predicted) return null;
   const pct = (v) => Math.round(v * 100);
   const range = `${pct(predicted.wilson95[0])}-${pct(predicted.wilson95[1])}%`;
-  return `Dry run predicted ${pct(predicted.arrivalRate)}% (range ${range}); this run: ${OUTCOME_WORD[outcome] ?? outcome}`;
+  return `Dry run predicted ${pct(predicted.arrivalRate)}% (range ${range}); this run: ${OUTCOME_WORD[outcome] ?? outcome}. ${driftLabel(driftPct)}`;
+}
+
+/**
+ * Deterministic signature of a sol plan's waypoints + guardrails, used to
+ * detect a stale dry-run prediction (review finding 2): a summary is only
+ * trustworthy at uplink time if it was computed against the EXACT plan
+ * being uplinked, not an earlier waypoint set or guardrail combination.
+ */
+export function planSignature(waypoints, guardrails) {
+  return JSON.stringify({ waypoints, guardrails });
 }

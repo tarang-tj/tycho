@@ -12,7 +12,7 @@
 import { renderPlanningPanel } from "./hud-planning.js";
 import { copyResultText } from "./hud-clipboard.js";
 import { formatShareResult, formatLegGrid } from "./share-result.js";
-import { formatPredictedLine } from "./mars-run.js";
+import { formatPredictedLine, driftLabel } from "./mars-run.js";
 
 /** Create the mission panel DOM inside `hostEl` (the existing .hud side panel). Returns a handle with render functions. */
 export function createHud(hostEl) {
@@ -202,7 +202,11 @@ export function createHud(hostEl) {
     if (cal?.nPredicted > 0) {
       const row = document.createElement("p");
       row.className = "mission-scoreboard-calibration";
-      row.textContent = `Flight Rules calibration: predicted ${formatRate(cal.meanPredicted)}, actual ${formatRate(cal.actualRate)} (${cal.note})`;
+      // Review finding 5: this row is a product of the drift model too, so
+      // it carries the same ALWAYS-present drift label the dry-run panel
+      // and the end card's predicted line do (mars-run.js's driftLabel, one
+      // source of the text).
+      row.textContent = `Flight Rules calibration: predicted ${formatRate(cal.meanPredicted)}, actual ${formatRate(cal.actualRate)} (${cal.note}). ${driftLabel()}`;
       scoreboard.appendChild(row);
     }
   }

@@ -152,8 +152,15 @@ function buildTerrain({ width, height, metersPerPixel, elevations, synthetic, me
   // having no-data terrain and show the legend anyway.
   const hasMask = !!mask && mask.some((v) => v !== 0);
 
-  return { width, height, metersPerPixel, synthetic, elev, slopeDeg, normal, noData, hasMask, meta };
+  // `elevations`/`mask` (the raw arrays this closure was built from) are
+  // exposed so a caller can rebuild the exact same terrain elsewhere without
+  // re-fetching or re-parsing - e.g. dry-run.js handing the already-loaded
+  // Mars terrain to ensemble-worker.js instead of the worker re-fetching the
+  // asset files itself (Flight Rules review finding 3).
+  return { width, height, metersPerPixel, synthetic, elev, slopeDeg, normal, noData, hasMask, meta, elevations, mask };
 }
+
+export { buildTerrain };
 
 /**
  * Synthetic development/test terrain: a cone peak plus low-amplitude

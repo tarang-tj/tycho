@@ -20,7 +20,7 @@ import { autopilotStep } from "./sol-sim.js";
 import { createDriftModel, DRIFT_PCT } from "./drift.js";
 import { runDryRun } from "./dry-run.js";
 import { evaluateObjectives } from "./objectives.js";
-import { createMarsAutopilot, finalizeMarsLegOutcomes, pickRealRunSeed, DRY_RUN_N, DRY_RUN_BASE_SEED } from "./mars-run.js";
+import { createMarsAutopilot, finalizeMarsLegOutcomes, pickRealRunSeed, planSignature, DRY_RUN_N, DRY_RUN_BASE_SEED } from "./mars-run.js";
 
 const FIXED_DT = 1 / 60;
 const PUBLISHED_URL = "https://tarang-tj.github.io/tycho/";
@@ -56,7 +56,8 @@ let marsDriftModel = null; // seeded drift model for the REAL Mars run (mars-run
 let plannedWaypoints = []; // the sol plan as uplinked, kept separate from the live autopilot path
 let scoreboardData = loadScoreboard();
 let runMaxSlopeDeg = 0; // this run's peak slope, for objectives.js's slope objective
-let lastDryRunSummary = null; // ensemble.js-shaped summary from the plan panel's last "Dry run" press
+let lastDryRunSummary = null; // ensemble.js-shaped summary from the plan panel's last "Dry run" press, for the CURRENT run only (see runEpochGuard below)
+let lastDryRunSignature = null; // planSignature() of the waypoints+guardrails lastDryRunSummary was computed against, so a stale plan never gets credited with a summary that no longer matches it (review finding 2)
 let plannedPrediction = null; // { arrivalRate, wilson95 } snapshot taken at uplink time, or null if no dry run was done first
 let frameCount = 0; // advances every render frame; boot-probed to prove the loop keeps running during an async dry run
 
@@ -70,6 +71,11 @@ let lastVisibleHoldReason = null;
 // H4: a single render/physics loop, and a load-generation guard so a stale
 // async terrain load can never apply after a newer level switch started.
 const loadGuard = createGenerationGuard();
+// Flight Rules: a run-epoch token, bumped once per beginRun(). A dry run
+// still in flight when the player retries/switches level (its .then hasn't
+// fired yet) must never write its summary into the NEXT run's state - see
+// onDryRun below (review finding 1).
+const runEpochGuard = createGenerationGuard();
 const runLoop = createSingleLoop(
   (cb) => requestAnimationFrame(cb),
   (id) => cancelAnimationFrame(id),
@@ -320,6 +326,7 @@ function recordAbandonedIfActive() {
 /** Begin (or restart) a run: reset physics/signal/mission state, keeping the already-loaded terrain/scene. */
 function beginRun(scenarioKey) {
   recordAbandonedIfActive(); // a mid-run restart abandons whatever was active
+  const runGen = runEpochGuard.next(); // invalidates any dry run still in flight from the run this replaces (review finding 1)
   const level = LEVELS[currentLevelKey];
   activeScenarioKey = scenarioKey ?? null;
   const delaySec = resolveDelaySec(level, terrain.meta, scenarioKey);
@@ -338,6 +345,7 @@ function beginRun(scenarioKey) {
   marsDriftModel = null;
   runMaxSlopeDeg = 0;
   lastDryRunSummary = null;
+  lastDryRunSignature = null;
   plannedPrediction = null;
   plannedWaypoints = [];
   pendingDownPulses = [];
@@ -355,6 +363,12 @@ function beginRun(scenarioKey) {
     const scenario = resolveScenario(scenarioKey);
     el.delayNote.hidden = false;
     el.delayNote.textContent = `Real one-way delay: ${scenario.realMinutes} min. Compressed ${scenario.compression}x for play.`;
+    // Flight Rules: whether a dry run started by THIS run is still in
+    // flight - scoped to this beginRun() call (not the module-level
+    // runEpochGuard) so it can gate this run's own onUplink even before the
+    // in-flight promise settles. Review finding 2: uplinking while a dry
+    // run is still running counts as no prediction, not a stale one.
+    let dryRunInFlight = false;
     hud.showPlanning({
       terrain, guardrails, delayLabel: el.delayNote.textContent,
       // Flight Rules dry run: N=100 seeded headless sols of the CURRENT
@@ -362,18 +376,34 @@ function beginRun(scenarioKey) {
       // off the main thread when possible (dry-run.js). Re-running after
       // changing a guardrail shows the trade-off, since each press reads
       // the plan panel's live values.
-      onDryRun: (waypoints, guardrailValues) => runDryRun({
-        terrain, assetKey: level.assetKey, spawn, waypoints, guardrails: guardrailValues,
-        N: DRY_RUN_N, baseSeed: DRY_RUN_BASE_SEED, driftPct: DRIFT_PCT,
-      }).then((summary) => { lastDryRunSummary = summary; return summary; }),
+      onDryRun: (waypoints, guardrailValues) => {
+        dryRunInFlight = true;
+        return runDryRun({
+          terrain, spawn, waypoints, guardrails: guardrailValues,
+          N: DRY_RUN_N, baseSeed: DRY_RUN_BASE_SEED, driftPct: DRIFT_PCT,
+        }).then((summary) => {
+          // Only apply if this run is still the current one (review finding
+          // 1): a run still in flight when the player retried/switched
+          // levels must never write its summary into the NEXT run's state.
+          if (runEpochGuard.isCurrent(runGen)) {
+            lastDryRunSummary = summary;
+            lastDryRunSignature = planSignature(waypoints, guardrailValues);
+          }
+          return summary;
+        }).finally(() => { dryRunInFlight = false; });
+      },
       onUplink: (waypoints, guardrailValues) => {
         guardrails = guardrailValues;
         plannedWaypoints = waypoints;
-        // Snapshot whatever the LAST dry run (against these same guardrails)
-        // showed, at the moment the plan actually ships - not re-fetched
-        // later, so the end card's predicted-vs-actual line always reflects
-        // what the player actually saw before committing.
-        plannedPrediction = lastDryRunSummary ? { arrivalRate: lastDryRunSummary.arrivalRate, wilson95: lastDryRunSummary.wilson95 } : null;
+        // Snapshot whatever the LAST dry run showed ONLY if it finished
+        // (not still in flight) and was computed against this EXACT plan
+        // (waypoints + guardrails) - review finding 2. A dry run against an
+        // earlier plan, or one still running, is never credited to this
+        // uplink; the end card then shows no prediction rather than a stale
+        // or borrowed one.
+        const freshPrediction = !dryRunInFlight && lastDryRunSummary
+          && lastDryRunSignature === planSignature(waypoints, guardrailValues);
+        plannedPrediction = freshPrediction ? { arrivalRate: lastDryRunSummary.arrivalRate, wilson95: lastDryRunSummary.wilson95 } : null;
         signal.uplink({ type: "plan", waypoints }, simTime);
         pulseUplink();
         if (typeof scene?.setWaypoints === "function") scene.setWaypoints(waypoints, { units: "px" });

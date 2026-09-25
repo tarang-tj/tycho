@@ -49,6 +49,14 @@ export function renderPlanningPanel(plan, opts) {
   }
   redraw();
 
+  // A plan change must never leave a now-stale result on screen (main.js's
+  // uplink-time signature check is the correctness guard; this keeps the
+  // panel visually honest). Only called from handlers that fire after
+  // dryRunResult below exists.
+  function markPredictionStale() {
+    dryRunResult.hidden = true;
+  }
+
   /** Uplink is gated on >=1 waypoint; dry run is gated the same way, PLUS a run already in flight (dryRunBusy). */
   function syncButtons() {
     uplinkBtn.disabled = waypoints.length === 0;
@@ -61,6 +69,7 @@ export function renderPlanningPanel(plan, opts) {
     waypoints.push(snapped);
     cursor = { ...snapped };
     redraw();
+    markPredictionStale();
     help.textContent = `${waypoints.length}/${MAX_WAYPOINTS} waypoints placed.`;
     syncButtons();
   }
@@ -93,6 +102,7 @@ export function renderPlanningPanel(plan, opts) {
       event.preventDefault();
       waypoints.pop();
       redraw();
+      markPredictionStale();
       help.textContent = waypoints.length ? `${waypoints.length}/${MAX_WAYPOINTS} waypoints placed.` : HELP_DEFAULT;
       syncButtons();
       return;
@@ -113,6 +123,7 @@ export function renderPlanningPanel(plan, opts) {
   clearBtn.addEventListener("click", () => {
     waypoints.length = 0;
     redraw();
+    markPredictionStale();
     help.textContent = HELP_DEFAULT;
     syncButtons();
   });
@@ -122,6 +133,9 @@ export function renderPlanningPanel(plan, opts) {
   guardrails.className = "mission-guardrails";
   plan.appendChild(guardrails);
   const guardrailValues = buildGuardrailControls(guardrails, opts.guardrails);
+  // A guardrail change also invalidates whatever dry-run result is showing
+  // (event delegation: buildGuardrailControls owns the individual inputs).
+  guardrails.addEventListener("input", markPredictionStale);
 
   // Flight Rules "Dry run": N seeded headless sols of the CURRENT plan +
   // guardrails, read live at press time so re-running after changing a
@@ -149,6 +163,10 @@ export function renderPlanningPanel(plan, opts) {
           p.textContent = line;
           dryRunResult.appendChild(p);
         }
+        // The result box can sit below the guardrails and be clipped at
+        // smaller viewport heights (review finding 10, info); scroll it
+        // into view instead of leaving the player to find it by hand.
+        dryRunResult.scrollIntoView?.({ block: "nearest" });
       })
       .catch(() => {
         dryRunResult.hidden = false;

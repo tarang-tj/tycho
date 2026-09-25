@@ -13,7 +13,7 @@ const spawn = { x: terrain.width / 2, y: terrain.height / 2 };
 
 // --- pickRealRunSeed -------------------------------------------------------
 
-test("pickRealRunSeed: an injected overrideSeed is returned as-is (debug API / deterministic tests)", () => {
+test("pickRealRunSeed: an injected overrideSeed is returned as-is (unit-test injection point, not a shipped debug API)", () => {
   assert.equal(pickRealRunSeed({ overrideSeed: 42 }), 42);
 });
 
@@ -65,6 +65,27 @@ test("finalizeMarsLegOutcomes: passes through unchanged on 'arrived' (the outcom
   assert.deepEqual(result, autopilot.legOutcomes);
 });
 
+test("finalizeMarsLegOutcomes: a plan-time HOLD at leg 2 marks leg 1 'unreached', not 'ok' (review finding 7: the whole plan holds from t=0, so an earlier 'ok'-at-planning leg was never actually driven)", () => {
+  const waypoints = [{ x: spawn.x + 3, y: spawn.y }, { x: spawn.x + 3000, y: spawn.y }];
+  const guardrails = { ...DEFAULT_GUARDRAILS, maxAutonomousDistanceM: 100 };
+  const autopilot = createMarsAutopilot(spawn, waypoints, terrain, guardrails);
+  assert.deepEqual(autopilot.legOutcomes, ["ok", "held"], "precondition: leg 1 plans OK, leg 2 HOLDs on the distance cap");
+  // autopilot.index is 0 here (never advanced): a plan-time HOLD zeroes
+  // control from the very first tick, so no leg - including the one
+  // planLegsWithBoundaries marked "ok" - was ever actually driven.
+  const result = finalizeMarsLegOutcomes(autopilot, "held");
+  assert.deepEqual(result, ["unreached", "held"]);
+});
+
+test("finalizeMarsLegOutcomes: passes through unchanged on 'held' when no leg was ever marked 'ok' (HOLD on the very first leg)", () => {
+  const waypoints = [{ x: spawn.x + 3000, y: spawn.y }];
+  const guardrails = { ...DEFAULT_GUARDRAILS, maxAutonomousDistanceM: 10 };
+  const autopilot = createMarsAutopilot(spawn, waypoints, terrain, guardrails);
+  assert.deepEqual(autopilot.legOutcomes, ["held"]);
+  const result = finalizeMarsLegOutcomes(autopilot, "held");
+  assert.deepEqual(result, ["held"]);
+});
+
 test("finalizeMarsLegOutcomes: downgrades an in-progress leg to 'unreached' on a mid-drive 'stalled' outcome", () => {
   const waypoints = [{ x: spawn.x + 3, y: spawn.y }];
   const autopilot = createMarsAutopilot(spawn, waypoints, terrain, DEFAULT_GUARDRAILS);
@@ -93,7 +114,10 @@ test("formatPredictedLine: null when no dry run was done before uplink", () => {
   assert.equal(formatPredictedLine(null, "arrived"), null);
 });
 
-test("formatPredictedLine: renders the predicted range and this run's actual outcome", () => {
+test("formatPredictedLine: renders the predicted range, this run's actual outcome, and the ALWAYS-present drift label (review finding 5)", () => {
   const predicted = { arrivalRate: 0.49, wilson95: [0.394, 0.587] };
-  assert.equal(formatPredictedLine(predicted, "stalled"), "Dry run predicted 49% (range 39-59%); this run: stalled");
+  assert.equal(
+    formatPredictedLine(predicted, "stalled", 1),
+    "Dry run predicted 49% (range 39-59%); this run: stalled. Modeled drift: about 1% of distance (a game assumption, not a measured rover figure)",
+  );
 });

@@ -19,6 +19,8 @@ import { parseTerrain } from "../web/terrain-data.js";
 import { createRover, stepRover, steerTowardPoint } from "../web/rover-sim.js";
 import { createSignalLink } from "../web/signal.js";
 import { planRoute, DEFAULT_GUARDRAILS } from "../web/copilot.js";
+import { autopilotStep } from "../web/sol-sim.js";
+import { createMarsAutopilot } from "../web/mars-run.js";
 import { createMission, startMission, updateMission, whatHappenedLine } from "../web/mission.js";
 import { LEVELS, LEVEL_ORDER, MARS_SCENARIOS, resolveDelaySec, resolveScenario } from "../web/levels.js";
 import { findGlobalPath } from "./helpers/grid-astar.mjs";
@@ -302,22 +304,25 @@ for (const scenario of MARS_SCENARIOS) {
       for (const cmd of signal.pullDeliveredCommands(simTime)) {
         assert.equal(cmd.type, "plan");
         planDelivered = true;
-        const result = planRoute({ x: trueState.x, y: trueState.y }, cmd.waypoints, terrain, guardrails);
-        autopilot = { path: result.path, index: 0, holdReason: result.status === "HOLD" ? result.reason : null };
+        // Review finding 6: drive through the SAME loop the shipped game
+        // uses for a delivered Mars plan (main.js's tickPhysics via
+        // mars-run.js's createMarsAutopilot + sol-sim.js's autopilotStep),
+        // not a second, hand-rolled planRoute+steer loop that could pass
+        // here while the real game regresses.
+        autopilot = createMarsAutopilot({ x: trueState.x, y: trueState.y }, cmd.waypoints, terrain, guardrails);
       }
       if (!planDelivered && (trueState.x !== spawn.x || trueState.y !== spawn.y)) movedBeforeDelivery = true;
 
-      let control = { throttle: 0, steer: 0 };
-      if (autopilot && !autopilot.holdReason) {
-        const target = autopilot.path[autopilot.index];
-        if (target) {
-          control = steerTowardPoint(trueState, target);
-          const distM = Math.hypot(target.x - trueState.x, target.y - trueState.y) * terrain.metersPerPixel;
-          if (distM < WAYPOINT_ARRIVE_RADIUS_M) autopilot.index += 1;
-        }
+      // driftPct 0 (undrifted, believed === true): this proof is about
+      // winnability under the real drive loop at every delay, not about
+      // Flight Rules' drift model (covered separately by sol-sim-e2.test.mjs).
+      if (autopilot) {
+        const step = autopilotStep({ trueState, autopilot, terrain, dt, driftModel: null });
+        trueState = step.trueState;
+        autopilot = step.autopilot;
+      } else {
+        trueState = stepRover(trueState, { throttle: 0, steer: 0 }, terrain, dt);
       }
-
-      trueState = stepRover(trueState, control, terrain, dt);
       assert.equal(trueState.tipped, false, `mars rover (${scenario.key}) tipped at simTime=${simTime.toFixed(2)}s`);
       assert.equal(trueState.stopped, false, `mars rover (${scenario.key}) stopped (${trueState.stopReason}) at simTime=${simTime.toFixed(2)}s`);
       maxSlopeEncountered = Math.max(maxSlopeEncountered, trueState.slopeDeg);
