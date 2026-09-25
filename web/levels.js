@@ -82,10 +82,9 @@ export const LEVELS = {
 // one "plan" site (Jezero) last since it's a different mechanic (sol plan +
 // co-pilot) introduced only after the player already understands live
 // driving. Opportunity was dropped: TYCHO's premise is real terrain, and no
-// primary source for Opportunity's precise final position was found (see
-// plans/260923-2234-tycho-rover/levelup-v3/reports/w1-d-data.md) - shipping
-// it on synthetic terrain would contradict that premise, so it's cut
-// entirely rather than shipped fake. See README's "Next" note.
+// primary source for Opportunity's precise final position was found -
+// shipping it on synthetic terrain would contradict that premise, so it's
+// cut entirely rather than shipped fake. See README's "Next" note.
 export const LEVEL_ORDER = ["lunokhod", "change4", "apollo17", "tycho", "mars"];
 
 /** Resolve a Mars-scenarios-type delay scenario by key, defaulting to "typical" if unknown/omitted. */

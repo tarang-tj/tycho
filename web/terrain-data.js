@@ -1,7 +1,7 @@
 // Pure terrain module. Testable in node (no DOM/three.js dependency).
 import { generateSyntheticTerrain } from "./terrain-synthetic.js";
 //
-// Data contract (matches ~/plans/260923-2234-tycho-rover/plan.md):
+// Data contract (produced by tools/build_terrain.py, consumed here):
 //   assets/<body>/height.bin  Uint16 LE, width*height samples, row-major
 //   assets/<body>/meta.json   { width, height, metersPerPixel, minElev,
 //                               maxElev, heightScale, spawn:{x,y}, goal:{x,y},

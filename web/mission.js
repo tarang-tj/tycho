@@ -3,9 +3,8 @@
 // so this is deterministic and unit-testable in node.
 
 export const GOAL_RADIUS_M = 15;
-// U1: real micro-terrain (small craters near the Lunokhod 2 site, see
-// plans/260923-2234-tycho-rover/reports/lunokhod-data.md) can force a safe
-// route to detour away from the goal in straight-line terms for over a
+// U1: real micro-terrain (small craters near the Lunokhod 2 site) can force
+// a safe route to detour away from the goal in straight-line terms for over a
 // minute while still making real progress along the ground - a 20s window
 // (the pre-Lunokhod value) false-stalled a bot driving the real safe route
 // there (measured plateau: 62.9s of rover-time). 75s covers that with
