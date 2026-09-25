@@ -21,19 +21,28 @@ const DEFAULT_MAX_TIME_SEC = 2400;
 const PATH_SAMPLE_INTERVAL_S = 5; // downsample interval for truePath/believedPath output
 
 /**
- * Advance a sol-plan autopilot by one physics tick. Mirrors main.js's
- * tickPhysics Mars branch exactly, so main.js can call this same function
- * instead of keeping its own copy of the loop: steers the TRUE rover toward
- * the current path target using its BELIEVED (drift-offset) position,
- * steps physics on the true state, and advances the drift model by the
- * distance actually driven this tick.
+ * Advance a sol-plan autopilot by one physics tick. Steers the TRUE rover
+ * toward the current path target using its BELIEVED (drift-offset)
+ * position, steps physics on the true state, and advances the drift model
+ * by the true displacement driven this tick. Shares the same steer/step
+ * primitives as main.js's tickPhysics Mars branch, but is NOT an exact
+ * mirror of it - two real differences, both intentional for headless
+ * ensemble use:
+ *   - holdReason zeroes control immediately here (this function checks
+ *     `!autopilot.holdReason` before steering); tickPhysics has no such
+ *     check and instead keeps driving any already-planned partial path
+ *     until it runs out of waypoints, only then going idle.
+ *   - this module plans each waypoint leg individually (see
+ *     planLegsWithBoundaries below) to recover per-leg boundaries;
+ *     tickPhysics calls copilot.js's planRoute once over the whole
+ *     waypoint list and never sees leg boundaries at all.
  *
  * @param {object} params
  * @param {object} params.trueState - current true rover state (rover-sim.js `createRover`/`stepRover` shape)
  * @param {{path: {x:number,y:number}[], index: number, holdReason: string|null}} params.autopilot
  * @param {object} params.terrain - shared terrain interface (terrain-data.js shape)
  * @param {number} params.dt - fixed timestep, seconds
- * @param {{advance(distanceM:number):void, offsetM():{x:number,y:number}}|null} [params.driftModel] - omit/null for undrifted (believed === true)
+ * @param {{advance(dxTrueM:number, dyTrueM:number):void, offsetM():{x:number,y:number}}|null} [params.driftModel] - omit/null for undrifted (believed === true)
  * @param {number} [params.waypointArriveRadiusM]
  * @returns {{trueState: object, autopilot: {path, index, holdReason}, believedState: {x:number,y:number}, stepDistanceM: number}}
  */
@@ -52,8 +61,10 @@ export function autopilotStep({ trueState, autopilot, terrain, dt, driftModel = 
   }
 
   const nextTrueState = stepRover(trueState, control, terrain, dt);
-  const stepDistanceM = Math.hypot(nextTrueState.x - trueState.x, nextTrueState.y - trueState.y) * mpp;
-  if (driftModel) driftModel.advance(stepDistanceM);
+  const dxTrueM = (nextTrueState.x - trueState.x) * mpp;
+  const dyTrueM = (nextTrueState.y - trueState.y) * mpp;
+  const stepDistanceM = Math.hypot(dxTrueM, dyTrueM);
+  if (driftModel) driftModel.advance(dxTrueM, dyTrueM);
 
   return {
     trueState: nextTrueState,

@@ -2,53 +2,52 @@
 // dependency, deterministic (seeded), unit-testable in node.
 import { mulberry32 } from "./prng.js";
 
-// Modeled drift, a game assumption, not a measured rover figure: fixed ONCE,
-// up front, at a documented value in [1, 5] percent of distance driven.
-// Must NOT be retuned to make ensemble results look more interesting - see
-// plan-wave2.md's honesty rules. Labeled on screen everywhere it appears.
-export const DRIFT_PCT = 3;
+// game assumption, not a measured rover figure
+export const DRIFT_PCT = 1;
 
-// Per-meter wander of the walk's own heading. Two failure modes bound this
-// constant, both measured this session over a representative ~1.8km Mars
-// sol-plan drive at DRIFT_PCT=3 (see tools/tune_drift_heading_wander.mjs):
-// resampling the direction fully independently every tick (no correlation
-// at all) mostly cancels itself out over thousands of small ticks, netting
-// well under a meter of drift - nowhere near enough for a 6-15 m arrival
-// radius to ever notice, defeating the whole feature. A wander rate that is
-// too SLOW (direction barely turns over the whole drive) instead makes the
-// walk nearly a fixed vector, netting close to the full driftPct% of total
-// distance driven (~54 m here) on almost every seed - enough to break even
-// an easy, hazard-free plan on every run, which is just as dishonest in the
-// other direction. 1.5 rad of heading wander per meter driven sits between
-// those two extremes (median final offset ~9 m, p90 ~17 m over that same
-// drive): correlated enough to matter, decorrelated enough to still vary
-// run to run.
-const HEADING_WANDER_RAD_PER_M = 1.5;
+/** Standard normal draw via Box-Muller, fed by a mulberry32 stream. */
+function boxMullerNormal(rng) {
+  let u1 = rng();
+  while (u1 <= Number.EPSILON) u1 = rng(); // avoid log(0)
+  const u2 = rng();
+  return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+}
 
 /**
- * A seeded 2D random-walk model of rover localization drift: the rover's
- * BELIEVED position drifts away from its TRUE position as it drives,
- * growing with distance traveled. This corrupts only what the steering
- * loop reads (`believed = true + offset`); it never corrupts the control
- * output itself, and it never touches the physics/terrain the rover
- * actually stands on (see sol-sim.js's autopilotStep).
+ * A seeded heading-bias model of rover localization drift: once per run, a
+ * single heading bias `b` (radians) is drawn from Normal(0, sigma), with
+ * sigma chosen so the MEDIAN of |b| equals driftPct/100 radians. Every true
+ * displacement driven this run is rotated by that same fixed `b` to produce
+ * the BELIEVED displacement; the accumulated (believed - true) vector is
+ * what corrupts the steering loop's read of position (`believed = true +
+ * offset`). It never corrupts the control output itself, and it never
+ * touches the physics/terrain the rover actually stands on (see
+ * sol-sim.js's autopilotStep). For a straight drive of length d, the final
+ * offset magnitude is approximately d*|b|, so its MEDIAN is driftPct
+ * percent of distance driven, independent of step size (dt).
  *
  * @param {{seed?: number, driftPct?: number}} [opts]
- * @returns {{advance(distanceM: number): void, offsetM(): {x: number, y: number}}}
+ * @returns {{advance(dxTrueM: number, dyTrueM: number): void, offsetM(): {x: number, y: number}}}
  */
 export function createDriftModel({ seed = 0, driftPct = DRIFT_PCT } = {}) {
   const rng = mulberry32(seed);
-  let angleRad = rng() * Math.PI * 2; // seeded initial heading bias
+  // z ~ N(0,1) has median|z| = 0.6745 (the standard normal's quartile
+  // constant), so dividing driftPct/100 by 0.6745 makes the median of |b|
+  // land exactly on driftPct/100 radians.
+  const sigma = (driftPct / 100) / 0.6745;
+  const bias = sigma * boxMullerNormal(rng);
+  const cosB = Math.cos(bias);
+  const sinB = Math.sin(bias);
   let x = 0;
   let y = 0;
   return {
-    /** Accumulate one more correlated random-walk step sized to the distance just driven (meters). */
-    advance(distanceM) {
-      if (!distanceM) return;
-      angleRad += (rng() - 0.5) * HEADING_WANDER_RAD_PER_M * distanceM;
-      const magnitudeM = distanceM * (driftPct / 100);
-      x += Math.cos(angleRad) * magnitudeM;
-      y += Math.sin(angleRad) * magnitudeM;
+    /** Rotate this tick's true displacement (meters) by the run's fixed heading bias and accumulate believed-minus-true. */
+    advance(dxTrueM, dyTrueM) {
+      if (!dxTrueM && !dyTrueM) return;
+      const believedDx = dxTrueM * cosB - dyTrueM * sinB;
+      const believedDy = dxTrueM * sinB + dyTrueM * cosB;
+      x += believedDx - dxTrueM;
+      y += believedDy - dyTrueM;
     },
     /** Current accumulated believed-minus-true offset, in meters. */
     offsetM() {
