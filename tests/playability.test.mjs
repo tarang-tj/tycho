@@ -13,19 +13,24 @@
 // Deterministic, fixed-dt, no wall-clock reads: fast and reproducible.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parseTerrain } from "../web/terrain-data.js";
 import { createRover, stepRover, steerTowardPoint } from "../web/rover-sim.js";
 import { createSignalLink } from "../web/signal.js";
 import { planRoute, DEFAULT_GUARDRAILS } from "../web/copilot.js";
 import { createMission, startMission, updateMission, whatHappenedLine } from "../web/mission.js";
-import { MARS_SCENARIOS } from "../web/levels.js";
+import { LEVELS, LEVEL_ORDER, MARS_SCENARIOS, resolveDelaySec, resolveScenario } from "../web/levels.js";
 import { findGlobalPath } from "./helpers/grid-astar.mjs";
 
 const ASSETS_ROOT = fileURLToPath(new URL("../assets/", import.meta.url));
 const GOAL_RADIUS_M = 15;
 const WAYPOINT_ARRIVE_RADIUS_M = 6;
+
+/** True only if a level's real height.bin + meta.json are present in this checkout. */
+function hasRealAssets(assetKey) {
+  return existsSync(`${ASSETS_ROOT}${assetKey}/height.bin`) && existsSync(`${ASSETS_ROOT}${assetKey}/meta.json`);
+}
 
 function loadRealTerrain(body) {
   const base = `${ASSETS_ROOT}${body}/`;
@@ -56,16 +61,25 @@ function downsample(path, n) {
 
 // --- A* reachability: both bodies must have a real spawn->goal route -----
 
-for (const body of ["moon", "mars", "lunokhod"]) {
-  test(`${body}: A* finds a spawn->goal path under the default slope guardrail`, () => {
-    const terrain = loadRealTerrain(body);
+// One directory per distinct assets/<assetKey>/ (several levels can share
+// one, e.g. Tycho and Mars/Jezero use "moon"/"mars"; dedupe so each real
+// asset directory is only walked once).
+const ASSET_DIRS = [...new Set(LEVEL_ORDER.map((key) => LEVELS[key].assetKey))];
+
+for (const assetKey of ASSET_DIRS) {
+  if (!hasRealAssets(assetKey)) {
+    test(`${assetKey}: A* finds a spawn->goal path under the default slope guardrail`, { skip: `assets/${assetKey}/ not present in this worktree (data lane pending)` }, () => {});
+    continue;
+  }
+  test(`${assetKey}: A* finds a spawn->goal path under the default slope guardrail`, () => {
+    const terrain = loadRealTerrain(assetKey);
     const { spawn, goal } = terrain.meta;
     const { path, iterations } = findGlobalPath(terrain, spawn, goal, DEFAULT_GUARDRAILS.maxSlopeDeg);
-    assert.ok(path, `${body}: no path found from spawn to goal under ${DEFAULT_GUARDRAILS.maxSlopeDeg}deg after ${iterations} iterations`);
-    assert.ok(path.length > 1, `${body}: path should have more than one point`);
+    assert.ok(path, `${assetKey}: no path found from spawn to goal under ${DEFAULT_GUARDRAILS.maxSlopeDeg}deg after ${iterations} iterations`);
+    assert.ok(path.length > 1, `${assetKey}: path should have more than one point`);
     for (const p of path) {
-      assert.ok(terrain.slopeDeg(p.x, p.y) <= DEFAULT_GUARDRAILS.maxSlopeDeg + 1e-6, `${body}: path point (${p.x},${p.y}) exceeds the slope guardrail`);
-      assert.equal(terrain.noData?.(p.x, p.y) ?? false, false, `${body}: path point (${p.x},${p.y}) crosses a no-data cell`);
+      assert.ok(terrain.slopeDeg(p.x, p.y) <= DEFAULT_GUARDRAILS.maxSlopeDeg + 1e-6, `${assetKey}: path point (${p.x},${p.y}) exceeds the slope guardrail`);
+      assert.equal(terrain.noData?.(p.x, p.y) ?? false, false, `${assetKey}: path point (${p.x},${p.y}) crosses a no-data cell`);
     }
   });
 }
@@ -237,7 +251,7 @@ for (const scenario of MARS_SCENARIOS) {
 
     const signal = createSignalLink(delaySec);
     let trueState = createRover({ x: spawn.x, y: spawn.y, heading: 0 });
-    let mission = startMission(createMission("mars"), 0);
+    let mission = startMission(createMission("mars", { mode: "plan" }), 0);
     let visibleState = null;
     let autopilot = null;
     signal.uplink({ type: "plan", waypoints }, 0);
@@ -292,5 +306,142 @@ for (const scenario of MARS_SCENARIOS) {
     assert.equal(mission.status, "won", `mars (${scenario.key}, ${scenario.label}): expected "won", got "${mission.status}" at simTime=${simTime.toFixed(1)}s (${whatHappenedLine(mission)}); true pos (${trueState.x.toFixed(1)},${trueState.y.toFixed(1)})`);
     assert.equal(mission.outcome, "arrived");
     console.log(`  [mars bot ${scenario.key}] arrived in ${simTime.toFixed(1)}s sim time (delay ${delaySec.toFixed(1)}s), max slope encountered ${maxSlopeEncountered.toFixed(1)}deg, ${waypoints.length} waypoints`);
+  });
+}
+
+// --- New wave-1 sites (Chang'e-4, Opportunity, Apollo 17): generic bots ----
+//
+// Same shapes as the hand-tuned Lunokhod (live, pursuit steering) and Mars
+// (sol plan) bots above, generalized over any level config so a new site's
+// assets are proven winnable the moment the data lane ships them - never
+// silently skipped as a false pass. Runs on real assets when present in
+// this worktree; SKIPs (node:test skip, with the reason) when they are not,
+// which is the parallel data lane's job, not this lane's.
+
+/** Live-mode bot: delayed telemetry + pure-pursuit steering along a margin-dilated A* route (same technique proven on Lunokhod above). */
+function runLiveDelayedBot(level) {
+  const terrain = loadRealTerrain(level.assetKey);
+  const { spawn, goal } = terrain.meta;
+  const delaySec = resolveDelaySec(level, terrain.meta);
+  assert.ok(delaySec > 0, `${level.key}: delay must be the real, positive one-way light-time delay`);
+
+  const PLANNING_MARGIN_DEG = 30;
+  const { path } = findGlobalPath(terrain, spawn, goal, PLANNING_MARGIN_DEG, 1, 500000, 1);
+  assert.ok(path, `${level.key}: precondition: a safe, dilated (margin-buffered) route must exist`);
+
+  const signal = createSignalLink(delaySec);
+  let trueState = createRover({ x: spawn.x, y: spawn.y, heading: 0 });
+  let currentControl = { throttle: 0, steer: 0 };
+  let waypointIndex = 0;
+  let lastCommandAt = -Infinity;
+  const CONTROL_INTERVAL_S = 0.1;
+  const dt = 1 / 20;
+  const BUDGET_S = 3000;
+  let simTime = 0;
+
+  let mission = startMission(createMission(level.key, level), 0);
+  let visibleState = null;
+
+  for (; simTime < BUDGET_S && mission.status === "active"; simTime += dt) {
+    for (const cmd of signal.pullDeliveredCommands(simTime)) currentControl = cmd;
+
+    trueState = stepRover(trueState, currentControl, terrain, dt);
+    assert.equal(trueState.tipped, false, `${level.key} bot tipped at simTime=${simTime.toFixed(2)}s, slope=${trueState.slopeDeg?.toFixed(1)}deg`);
+    assert.equal(trueState.stopped, false, `${level.key} bot stopped (${trueState.stopReason}) at simTime=${simTime.toFixed(2)}s`);
+
+    signal.telemetry({ ...trueState, copilotHold: null, planActive: true }, simTime);
+    const visible = signal.visibleTelemetry(simTime);
+    if (visible) visibleState = visible;
+
+    mission = updateMission(mission, { visibleTelemetry: visibleState, simTime, terrain, telemetryAgeSec: signal.telemetryAge(simTime) });
+
+    if (visibleState && simTime - lastCommandAt >= CONTROL_INTERVAL_S) {
+      lastCommandAt = simTime;
+      const { idx, target } = pursuitTarget(path, waypointIndex, visibleState.state, terrain.metersPerPixel);
+      waypointIndex = idx;
+      signal.uplink(steerTowardPoint(visibleState.state, target), simTime);
+    }
+  }
+
+  assert.equal(mission.status, "won", `${level.key} bot failed to reach the goal within ${BUDGET_S}s (sim); mission ended "${mission.status}" (${whatHappenedLine(mission)}); final true position (${trueState.x.toFixed(1)},${trueState.y.toFixed(1)})`);
+  assert.equal(mission.outcome, "arrived");
+  console.log(`  [${level.key} bot] arrived in ${simTime.toFixed(1)}s sim time`);
+}
+
+/** Plan-mode bot: a downsampled A* route uplinked as a sol plan and driven by the real co-pilot (same technique proven on Mars/Jezero above). */
+function runSolPlanBot(level, scenario) {
+  const terrain = loadRealTerrain(level.assetKey);
+  const { spawn, goal } = terrain.meta;
+  const delaySec = resolveDelaySec(level, terrain.meta, scenario.key);
+
+  const { path } = findGlobalPath(terrain, spawn, goal, DEFAULT_GUARDRAILS.maxSlopeDeg);
+  assert.ok(path, `${level.key}: precondition: a safe route must exist under the default slope guardrail`);
+  const waypoints = downsample(path, 4);
+  waypoints[waypoints.length - 1] = { x: goal.x, y: goal.y };
+
+  const signal = createSignalLink(delaySec);
+  let trueState = createRover({ x: spawn.x, y: spawn.y, heading: 0 });
+  let mission = startMission(createMission(level.key, level), 0);
+  let visibleState = null;
+  let autopilot = null;
+  signal.uplink({ type: "plan", waypoints }, 0);
+
+  const dt = 1 / 10;
+  const BUDGET_S = 2400;
+  let simTime = 0;
+  let planDelivered = false;
+  let movedBeforeDelivery = false;
+
+  for (; simTime < BUDGET_S && mission.status === "active"; simTime += dt) {
+    for (const cmd of signal.pullDeliveredCommands(simTime)) {
+      planDelivered = true;
+      const result = planRoute({ x: trueState.x, y: trueState.y }, cmd.waypoints, terrain, DEFAULT_GUARDRAILS);
+      autopilot = { path: result.path, index: 0, holdReason: result.status === "HOLD" ? result.reason : null };
+    }
+    if (!planDelivered && (trueState.x !== spawn.x || trueState.y !== spawn.y)) movedBeforeDelivery = true;
+
+    let control = { throttle: 0, steer: 0 };
+    if (autopilot && !autopilot.holdReason) {
+      const target = autopilot.path[autopilot.index];
+      if (target) {
+        control = steerTowardPoint(trueState, target);
+        const distM = Math.hypot(target.x - trueState.x, target.y - trueState.y) * terrain.metersPerPixel;
+        if (distM < WAYPOINT_ARRIVE_RADIUS_M) autopilot.index += 1;
+      }
+    }
+
+    trueState = stepRover(trueState, control, terrain, dt);
+    assert.equal(trueState.tipped, false, `${level.key} rover (${scenario.key}) tipped at simTime=${simTime.toFixed(2)}s`);
+    assert.equal(trueState.stopped, false, `${level.key} rover (${scenario.key}) stopped (${trueState.stopReason}) at simTime=${simTime.toFixed(2)}s`);
+
+    signal.telemetry({ ...trueState, copilotHold: autopilot?.holdReason ?? null, planActive: !!autopilot, autopilotPath: autopilot?.path ?? null }, simTime);
+    const visible = signal.visibleTelemetry(simTime);
+    if (visible) visibleState = visible;
+
+    mission = updateMission(mission, { visibleTelemetry: visibleState, simTime, terrain, telemetryAgeSec: signal.telemetryAge(simTime) });
+  }
+
+  assert.equal(movedBeforeDelivery, false, `${level.key}: the rover must not move before the delayed plan arrives`);
+  assert.ok(planDelivered, `${level.key}: the sol plan never arrived within the sim budget`);
+  assert.equal(mission.status, "won", `${level.key} (${scenario.key}): expected "won", got "${mission.status}" at simTime=${simTime.toFixed(1)}s (${whatHappenedLine(mission)})`);
+  assert.equal(mission.outcome, "arrived");
+  console.log(`  [${level.key} bot ${scenario.key}] arrived in ${simTime.toFixed(1)}s sim time`);
+}
+
+const COVERED_ELSEWHERE = new Set(["lunokhod", "tycho", "mars"]); // already proven above with hand-tuned bots
+
+for (const key of LEVEL_ORDER) {
+  if (COVERED_ELSEWHERE.has(key)) continue;
+  const level = LEVELS[key];
+  const name = level.mode === "plan"
+    ? `${key}: a sol plan uplinked through the real delay reaches the goal under the shipped DEFAULT guardrails`
+    : `${key}: a delayed-telemetry bot reaches the goal from spawn without tipping or driving onto no-data terrain`;
+  if (!hasRealAssets(level.assetKey)) {
+    test(name, { skip: `assets/${level.assetKey}/ not present in this worktree (data lane pending)` }, () => {});
+    continue;
+  }
+  test(name, () => {
+    if (level.mode === "plan") runSolPlanBot(level, resolveScenario());
+    else runLiveDelayedBot(level);
   });
 }

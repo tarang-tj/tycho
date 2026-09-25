@@ -19,11 +19,13 @@
 //   3. A clear, actionable error otherwise.
 import assert from "node:assert/strict";
 import { once } from "node:events";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
+import { LEVELS, LEVEL_ORDER } from "../web/levels.js";
 
 function resolvePlaywright() {
   if (process.env.TYCHO_PLAYWRIGHT_FROM) {
@@ -42,6 +44,7 @@ function resolvePlaywright() {
 }
 const { chromium } = resolvePlaywright();
 const root = fileURLToPath(new URL("../", import.meta.url));
+const assetsRoot = fileURLToPath(new URL("../assets/", import.meta.url));
 
 const mime = { ".html": "text/html", ".css": "text/css", ".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json" };
 const server = createServer(async (request, response) => {
@@ -280,6 +283,37 @@ try {
     return m.status === "held";
   }, marsDelaySec * 1000 + 3000, "mission never transitioned to 'held' after the co-pilot HOLD reached telemetry");
   console.log("Mars: co-pilot HOLD reached the player as mission.status === 'held'.");
+
+  // ---------------------------------------------------------------------
+  // Wave-1 sites (Chang'e-4, Opportunity, Apollo 17): every level whose real
+  // assets are present in this checkout gets the same WebGL + real-DEM +
+  // positive-delay proof as Lunokhod/Tycho/Mars above. A level with no
+  // shipped assets yet is logged, not asserted against - it still boots via
+  // terrain-data.js's synthetic fallback (unexercised here on purpose; that
+  // path is proven directly by tests/terrain-data.test.mjs), and shipping it
+  // is the parallel data lane's own gate, not this one's.
+  // ---------------------------------------------------------------------
+  for (const key of LEVEL_ORDER) {
+    if (key === "lunokhod" || key === "tycho" || key === "mars") continue; // already proven in depth above
+    const level = LEVELS[key];
+    const shipped = existsSync(`${assetsRoot}${level.assetKey}/height.bin`) && existsSync(`${assetsRoot}${level.assetKey}/meta.json`);
+    if (!shipped) {
+      console.log(`${level.label}: assets/${level.assetKey}/ not present in this worktree - skipping its boot probe (data lane pending).`);
+      continue;
+    }
+    await page.evaluate((k) => window.TYCHO.switchLevel(k), key);
+    await page.waitForFunction((k) => window.TYCHO.getLevel() === k, key, { timeout: 5000 });
+    await page.waitForFunction(() => window.TYCHO.ready === true, null, { timeout: 10000 });
+    const info = await page.evaluate(() => window.TYCHO.getTerrainInfo());
+    assert.ok(info && info.width > 0, `${level.label}: terrain info missing`);
+    assert.equal(info.synthetic, false, `${level.label}: must render the real shipped DEM, not the synthetic fallback`);
+    const paint = await page.evaluate(sampleCanvasPainted);
+    assert.ok(paint.fraction > 0.02, `${level.label}: scene appears blank: only ${(paint.fraction * 100).toFixed(2)}% of pixels lit`);
+    await page.evaluate(() => window.TYCHO.debug.startMission());
+    const delaySec = await page.evaluate(() => window.TYCHO.debug.getDelaySec());
+    assert.ok(delaySec > 0, `${level.label}: one-way delay must be a real positive number, got ${delaySec}`);
+    console.log(`${level.label}: booted cleanly, real DEM, ${info.width}x${info.width} @ ${info.metersPerPixel} m/px, delay ${delaySec.toFixed(2)}s.`);
+  }
 
   // Expected noise: real DEM assets for Mars are produced by a separate
   // pipeline lane and may not be present in this checkout, so
