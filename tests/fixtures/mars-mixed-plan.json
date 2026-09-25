@@ -1,0 +1,64 @@
+{
+  "description": "Found by tools/find_mars_mixed_plan_fixture.mjs (real Jezero DEM, assets/mars/) over a bounded search of 8 candidates: 3 waypoints sampled from a spawn->goal A* route, with one leg threaded through a real 23.0deg-class cell (legal at DEFAULT_GUARDRAILS's maxSlopeDeg=25, hazardous at 18). At DEFAULT_GUARDRAILS the ensemble splits between 'arrived' and 'stalled' purely from DRIFT_PCT=1's seeded per-run heading-bias drift pushing the believed-vs-true steering off enough, on some seeds, to lose the approach; at maxSlopeDeg=18 the same threaded cell is flagged a plan-time hazard and the run holds before ever driving, on every seed (planning is deterministic, independent of drift/seed).",
+  "assetKey": "mars",
+  "spawn": {
+    "x": 512,
+    "y": 512
+  },
+  "goal": {
+    "x": 455,
+    "y": 441
+  },
+  "waypoints": [
+    {
+      "x": 476,
+      "y": 476
+    },
+    {
+      "x": 447,
+      "y": 427
+    },
+    {
+      "x": 455,
+      "y": 441
+    }
+  ],
+  "guardrails": {
+    "maxSlopeDeg": 25,
+    "hazardMode": "reroute",
+    "maxAutonomousDistanceM": 3000,
+    "lookaheadRadiusM": 60
+  },
+  "driftPct": 1,
+  "baseSeed": 0,
+  "measured": {
+    "note": "Measured this session (node, real assets/mars DEM) by tools/find_mars_mixed_plan_fixture.mjs; reproduced independently in tests/ensemble.test.mjs.",
+    "ensembleN20AtDefaultGuardrails": {
+      "arrived": 7,
+      "held": 0,
+      "tipped": 0,
+      "stalled": 13
+    },
+    "ensembleN20AtMaxSlope18Reroute": {
+      "arrived": 0,
+      "held": 20,
+      "tipped": 0,
+      "stalled": 0
+    },
+    "ensembleN20AtMaxSlope31Stop": {
+      "arrived": 7,
+      "held": 0,
+      "tipped": 0,
+      "stalled": 13
+    },
+    "looseVsMidDirection": "no difference: loose(31,stop) and mid(25,reroute) produced identical counts on this fixture",
+    "tippedTradeoffBlocked": "The real Mars DEM has zero cells >= the rover's fixed 32deg physical tip limit within 8.3km of spawn (nearest is (271,852) at 32.17deg, 8335m from spawn), and mission.js's STALL_TIMEOUT_S=75s caps any sustained move-away-from-goal excursion at roughly 225m (75s * 3 m/s) before the run is forced to 'stalled'. No sol plan can both stay within that stall grace and reach a >=32deg cell, so 'tipped' cannot be produced near this goal by any guardrail/drift combination without changing DRIFT_PCT (forbidden) or terrain/mission logic (out of this lane's file ownership)."
+  },
+  "provenance": {
+    "script": "tools/find_mars_mixed_plan_fixture.mjs",
+    "command": "node tools/find_mars_mixed_plan_fixture.mjs",
+    "generatedAt": "2026-09-25T15:48:11.358Z",
+    "candidatesTried": 8,
+    "driftModel": "fixed-per-run heading-bias, see web/drift.js"
+  }
+}
