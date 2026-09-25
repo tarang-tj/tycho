@@ -28,3 +28,17 @@ export function formatShareResult({ levelLabel, outcome, timeSec, delaySec, copi
   const copilotText = copilotOn ? "on" : "off";
   return `TYCHO · ${levelLabel} · ${outcomeWord} ${formatMinSec(timeSec)} · delay ${delayText} · co-pilot ${copilotText} · ${url}`;
 }
+
+// Plain-ASCII glyph per leg outcome (web/sol-sim.js's `legOutcomes`: one of
+// "ok" | "held" | "tipped" | "unreached"). Plain ASCII, not unicode blocks,
+// so the grid survives being pasted into anything (chat apps, plain-text
+// notes) without a font that supports box-drawing glyphs. "?" is the
+// defensive fallback for any outcome string this module doesn't know about,
+// so a future new outcome degrades visibly instead of throwing.
+const LEG_GLYPHS = { ok: "#", held: "H", tipped: "X", unreached: "." };
+
+/** Build the daily-share leg grid: one glyph per waypoint leg, in order. */
+export function formatLegGrid(legOutcomes) {
+  if (!Array.isArray(legOutcomes)) return "";
+  return legOutcomes.map((outcome) => LEG_GLYPHS[outcome] ?? "?").join("");
+}

@@ -142,3 +142,22 @@ test("loadScoreboard migrates old \"moon\" runs to \"tycho\" on load", () => {
     assert.equal(loaded.moon, undefined);
   });
 });
+
+// --- old-format (pre-predictedArrival/medals) records still load ---------
+
+test("old-format v1 records (no predictedArrival/medals fields) still load and aggregate unchanged", () => {
+  withFakeStorage(memoryStorage(), () => {
+    globalThis.localStorage.setItem(
+      "tycho.scoreboard.v1",
+      JSON.stringify({ tycho: [{ outcome: "arrived", timeSec: 100, distanceM: 500, copilotOn: false, at: 1 }] }),
+    );
+    const loaded = loadScoreboard();
+    assert.equal(loaded.tycho.length, 1);
+    const stats = aggregate(loaded, "tycho");
+    assert.equal(stats.n, 1);
+    assert.equal(stats.successRateAll, 1);
+    assert.equal(stats.calibration.nPredicted, 0, "old records never had predictedArrival, so none count toward calibration");
+    assert.equal(stats.calibration.meanPredicted, null);
+    assert.equal(stats.calibration.actualRate, null);
+  });
+});
