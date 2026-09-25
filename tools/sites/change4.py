@@ -23,6 +23,18 @@ cited alongside it and agrees within about 20 m, well inside LROC's stated
 uncertainty. The landing date (3 January 2019) still comes from Liu et al.
 2019: "The Chang'E-4 (CE-4) spacecraft successfully landed on the lunar
 farside on January 3, 2019."
+
+Spawn distance/selection fix (levelup v3 follow-up to H1): the corrected
+LRO-frame goal above re-picked pick_best_spawn's spawn at the old 1.5-3km
+range's far end (~2497 m, along a more jagged margin-dilated route), which
+made a delayed-telemetry playthrough take ~4700s of simulated game time --
+too long to be fun. The spawn search below is tightened to 1.2-1.8km and
+also scores each compass bearing by real route tortuosity (grid Dijkstra
+path length / straight-line distance), not just line slope, via
+pick_best_spawn's prefer_straight_path option -- see its docstring in
+tools/sites/common.py. Apollo 17 is unaffected: it keeps the original
+1.5-3km/line-slope-only search (its spawn was already close, ~1651 m, and
+plays fine).
 """
 from __future__ import annotations
 
@@ -113,8 +125,13 @@ def process_change4() -> None:
 
     # No sourced approach-direction for the lander (unlike Lunokhod 2's LROC
     # post 699); search every compass bearing and keep the one with the
-    # lowest spawn->goal line slope instead of fabricating a bearing.
-    spawn_local, _, _ = pick_best_spawn(filled, goal_local, native_mpp, submask)
+    # lowest combined line-slope + route-tortuosity score instead of
+    # fabricating a bearing. Range tightened to 1.2-1.8km (was 1.5-3km) so
+    # the level is a reasonable drive at real rover speed (see module
+    # docstring).
+    spawn_local, _, _ = pick_best_spawn(filled, goal_local, native_mpp, submask,
+                                         r_min_m=1200.0, r_max_m=1800.0, prefer_straight_path=True,
+                                         tortuosity_weight_deg=25.0, bearing_step_deg=10.0)
 
     shade_1024, slope_1024 = shade_and_slope_1024(filled, native_mpp, 315.0, 45.0)
     resized = area_resample(filled, 1024, 1024)  # crop already 1024^2; identity resample
@@ -152,11 +169,13 @@ def process_change4() -> None:
              "a different frame and is deliberately not used here: it would place the "
              "goal about 415 m from the real lander in this LRO-frame DTM. Goal is the "
              "lander (\"Chang'e-4 lander (landed 2019)\"); spawn is the point "
-             "1.5-3km away whose straight drivable line to the lander has the "
-             "lowest max slope, searched across all compass bearings (no sourced "
-             "approach direction exists for this landing, unlike Lunokhod 2, so a "
-             "bearing is not fabricated -- the algorithmically best-drivable "
-             "direction is used instead). "
+             "1.2-1.8km away with the lowest combined score of line slope, "
+             "real-route tortuosity, and initial-heading offset (how much the "
+             "delayed-telemetry bot/player has to turn right after spawning) to "
+             "the lander, searched across all compass bearings (no sourced "
+             "approach direction exists for this landing, unlike Lunokhod 2, so "
+             "a bearing is not fabricated -- the algorithmically best-drivable, "
+             "straightest, easiest-to-orient-on direction is used instead). "
              "mask.bin marks nodata-filled cells (rendered as a hatched no-data "
              "texture in albedo.jpg/preview.png); spawn and goal are kept "
              f">= {MIN_CLEAR_OF_MASK_PX}px clear of them. delayModel gives an "

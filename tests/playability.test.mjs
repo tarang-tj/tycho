@@ -26,6 +26,13 @@ import { findGlobalPath } from "./helpers/grid-astar.mjs";
 const ASSETS_ROOT = fileURLToPath(new URL("../assets/", import.meta.url));
 const GOAL_RADIUS_M = 15;
 const WAYPOINT_ARRIVE_RADIUS_M = 6;
+// Every live-mode level's delayed-telemetry bot must arrive within this
+// much SIMULATED game time, or the level is too long to be fun (not a
+// winnability question - all these levels ARE winnable, this is a
+// playability/pacing budget). Chang'e-4 blew through this at ~4700s before
+// its spawn-selection fix (levelup v3); this constant is the regression
+// guard for that class of bug.
+const LIVE_BOT_ARRIVAL_BUDGET_S = 2000;
 
 /** True only if a level's real height.bin + meta.json are present in this checkout. */
 function hasRealAssets(assetKey) {
@@ -168,6 +175,8 @@ test("moon: a delayed-telemetry bot reaches the goal from spawn without tipping 
 
   assert.equal(mission.status, "won", `moon bot failed to reach the goal within ${BUDGET_S}s (sim); mission ended "${mission.status}" (${whatHappenedLine(mission)}); final true position (${trueState.x.toFixed(1)},${trueState.y.toFixed(1)})`);
   assert.equal(mission.outcome, "arrived");
+  assert.ok(simTime <= LIVE_BOT_ARRIVAL_BUDGET_S,
+    `moon bot took ${simTime.toFixed(1)}s to arrive, exceeding the ${LIVE_BOT_ARRIVAL_BUDGET_S}s playability budget`);
   console.log(`  [moon bot] arrived in ${simTime.toFixed(1)}s sim time, max slope encountered ${maxSlopeEncountered.toFixed(1)}deg, path points ${path.length}`);
 });
 
@@ -245,6 +254,8 @@ test("lunokhod: a delayed-telemetry bot reaches the parked Lunokhod 2 from spawn
 
   assert.equal(mission.status, "won", `lunokhod bot failed to reach Lunokhod 2 within ${BUDGET_S}s (sim); mission ended "${mission.status}" (${whatHappenedLine(mission)}); final true position (${trueState.x.toFixed(1)},${trueState.y.toFixed(1)})`);
   assert.equal(mission.outcome, "arrived");
+  assert.ok(simTime <= LIVE_BOT_ARRIVAL_BUDGET_S,
+    `lunokhod bot took ${simTime.toFixed(1)}s to arrive, exceeding the ${LIVE_BOT_ARRIVAL_BUDGET_S}s playability budget`);
   console.log(`  [lunokhod bot] arrived in ${simTime.toFixed(1)}s sim time, max slope encountered ${maxSlopeEncountered.toFixed(1)}deg, path points ${path.length}`);
 });
 
@@ -357,13 +368,12 @@ function runLiveDelayedBot(level) {
   let lastCommandAt = -Infinity;
   const CONTROL_INTERVAL_S = 0.1;
   const dt = 1 / 20;
-  // H1 follow-up: Chang'e-4's corrected (LRO-frame) goal re-picked a spawn
-  // ~2.5 km out (was ~1.5 km pre-fix) along a more jagged dilated A* route,
-  // so the pure-pursuit bot needs more simulated time to finish than the
-  // 3000s that was enough before - confirmed it still wins with margin at
-  // 6000s (actual: ~4700s). This is a test-time budget only; it doesn't
-  // change what the game itself allows a player to do.
-  const BUDGET_S = 6000;
+  // Same sim-time budget as the hand-tuned moon/lunokhod bots above - a
+  // generous ceiling for the bot to finish at all, distinct from the
+  // tighter LIVE_BOT_ARRIVAL_BUDGET_S playability check below (a level
+  // that only finishes between 2000s and this ceiling is a real gate
+  // failure via that check, not a silent pass).
+  const BUDGET_S = 3000;
   let simTime = 0;
 
   let mission = startMission(createMission(level.key, level), 0);
@@ -392,6 +402,8 @@ function runLiveDelayedBot(level) {
 
   assert.equal(mission.status, "won", `${level.key} bot failed to reach the goal within ${BUDGET_S}s (sim); mission ended "${mission.status}" (${whatHappenedLine(mission)}); final true position (${trueState.x.toFixed(1)},${trueState.y.toFixed(1)})`);
   assert.equal(mission.outcome, "arrived");
+  assert.ok(simTime <= LIVE_BOT_ARRIVAL_BUDGET_S,
+    `${level.key} bot took ${simTime.toFixed(1)}s to arrive, exceeding the ${LIVE_BOT_ARRIVAL_BUDGET_S}s playability budget`);
   console.log(`  [${level.key} bot] arrived in ${simTime.toFixed(1)}s sim time`);
 }
 

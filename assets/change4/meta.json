@@ -7,8 +7,8 @@
   "heightScale": 71.24365234375,
   "sizeKm": 5.12,
   "spawn": {
-    "x": 40,
-    "y": 349
+    "x": 497,
+    "y": 238
   },
   "goal": {
     "x": 512,
@@ -23,7 +23,7 @@
   "license": "LROC Reduced Data Record (RDR) products available through the NASA Planetary Data System (PDS) are in the public domain.",
   "credit": "NASA/GSFC/Arizona State University",
   "nodataFilledFraction": 0.0,
-  "notes": "Shaded rendering of real LRO NAC DTM elevation (not a photo). Crop is a 5.12km square at native 5 m/px, centered on the pixel of the Chang'e-4 lander (a surveyed coordinate, not a proxy). Goal uses LROC post 1087's LRO-frame coordinate (45.457 S, 177.589 E, +/-20 m), which matches this DTM's own frame; Liu et al. 2019 Nature Communications report an LRO-frame value (45.4561 S, 177.5885 E) that agrees within ~20 m. Liu et al.'s other (CE2TMap2015-frame) coordinate (45.4446 S, 177.5991 E) is a different frame and is deliberately not used here: it would place the goal about 415 m from the real lander in this LRO-frame DTM. Goal is the lander (\"Chang'e-4 lander (landed 2019)\"); spawn is the point 1.5-3km away whose straight drivable line to the lander has the lowest max slope, searched across all compass bearings (no sourced approach direction exists for this landing, unlike Lunokhod 2, so a bearing is not fabricated -- the algorithmically best-drivable direction is used instead). mask.bin marks nodata-filled cells (rendered as a hatched no-data texture in albedo.jpg/preview.png); spawn and goal are kept >= 20px clear of them. delayModel gives an honest but simplified one-way relay light-time estimate for the Earth->Queqiao->farside link (see tools/sites/relay.py for the sourced inputs and stated approximation).",
+  "notes": "Shaded rendering of real LRO NAC DTM elevation (not a photo). Crop is a 5.12km square at native 5 m/px, centered on the pixel of the Chang'e-4 lander (a surveyed coordinate, not a proxy). Goal uses LROC post 1087's LRO-frame coordinate (45.457 S, 177.589 E, +/-20 m), which matches this DTM's own frame; Liu et al. 2019 Nature Communications report an LRO-frame value (45.4561 S, 177.5885 E) that agrees within ~20 m. Liu et al.'s other (CE2TMap2015-frame) coordinate (45.4446 S, 177.5991 E) is a different frame and is deliberately not used here: it would place the goal about 415 m from the real lander in this LRO-frame DTM. Goal is the lander (\"Chang'e-4 lander (landed 2019)\"); spawn is the point 1.2-1.8km away with the lowest combined score of line slope, real-route tortuosity, and initial-heading offset (how much the delayed-telemetry bot/player has to turn right after spawning) to the lander, searched across all compass bearings (no sourced approach direction exists for this landing, unlike Lunokhod 2, so a bearing is not fabricated -- the algorithmically best-drivable, straightest, easiest-to-orient-on direction is used instead). mask.bin marks nodata-filled cells (rendered as a hatched no-data texture in albedo.jpg/preview.png); spawn and goal are kept >= 20px clear of them. delayModel gives an honest but simplified one-way relay light-time estimate for the Earth->Queqiao->farside link (see tools/sites/relay.py for the sourced inputs and stated approximation).",
   "maskFile": "mask.bin",
   "maskMeaning": "1 = no orbital data (filled), treat as impassable",
   "siteName": "Von Karman crater, Chang'e-4 landing site",
@@ -34,14 +34,14 @@
   },
   "goalLatLonNote": "LRO frame, LROC post 1087 (https://lroc.im-ldi.com/posts/1087), +/-20 m; agrees within ~20 m with Liu et al. 2019's own LRO-frame value (-45.4561, 177.5885). Liu et al.'s CE2TMap2015-frame value (-45.4446, 177.5991) is a different frame, not used as the goal here: it would misplace the goal ~415 m in this LRO-frame DTM (Liu et al. state the 415 m deviation directly).",
   "spawnLatLon": {
-    "lat": -45.43017,
-    "lon": 177.47788
+    "lat": -45.41187,
+    "lon": 177.58539
   },
   "landingDate": "3 January 2019",
   "landerElevCitedM": -5927.0,
-  "spawnGoalDistanceM": 2496.8,
-  "lineSlopeDegMax": 6.69,
-  "lineSlopeDegMean": 1.94,
+  "spawnGoalDistanceM": 1372.1,
+  "lineSlopeDegMax": 6.59,
+  "lineSlopeDegMean": 1.97,
   "delayModel": {
     "type": "relay",
     "oneWaySec": 1.71,
