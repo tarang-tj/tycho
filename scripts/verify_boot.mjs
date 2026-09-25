@@ -189,6 +189,15 @@ try {
   }, moonDelay * 2000 + 3000, "Moon win condition (mission.status === 'won') was never reached from a debug placement near the goal");
   console.log("Lunokhod: win condition reachable via debug.placeRoverAt near the goal.");
 
+  // Objectives: a Moon win must render the end card's objectives list
+  // (arrive/beat-par/slope), each marked met or unmet - proves
+  // evaluateObjectives wiring reaches the DOM, not just main.js's call.
+  await page.waitForSelector(".mission-endcard-objectives", { state: "visible", timeout: 5000 });
+  const objectiveLabels = await page.evaluate(() => [...document.querySelectorAll(".mission-objective")].map((el) => el.textContent));
+  assert.ok(objectiveLabels.length >= 2, `expected at least arrive + beat-par objectives on the Moon end card, got ${JSON.stringify(objectiveLabels)}`);
+  assert.ok(objectiveLabels.some((t) => /^\[x\] Arrive/.test(t)), `the "Arrive" objective must render as met on a win: ${JSON.stringify(objectiveLabels)}`);
+  console.log(`Lunokhod: end card objectives rendered - ${JSON.stringify(objectiveLabels)}`);
+
   // ---------------------------------------------------------------------
   // Tycho: a second Moon-body level, distinct terrain, still boots and
   // renders. Not exercised as deeply as Lunokhod/Mars (same live-drive
@@ -283,6 +292,72 @@ try {
     return m.status === "held";
   }, marsDelaySec * 1000 + 3000, "mission never transitioned to 'held' after the co-pilot HOLD reached telemetry");
   console.log("Mars: co-pilot HOLD reached the player as mission.status === 'held'.");
+
+  // ---------------------------------------------------------------------
+  // Flight Rules "Dry run": placing a waypoint through the real UI (not the
+  // debug API) and pressing Dry run must render N=100 results WITHOUT
+  // freezing the render loop - proven here by sampling the frame counter
+  // and getLiveLoopCount() while the async run is still in flight.
+  // ---------------------------------------------------------------------
+  // This block clicks real DOM (not just window.TYCHO.debug), so the title
+  // screen overlay (still up - the rest of this script drives missions
+  // through debug, never its own Start button) must stop intercepting
+  // pointer events first. Removing the class directly (not clicking
+  // Start) avoids title.js's start() side effect of calling switchLevel()
+  // and undoing the Mars level state this script already set up.
+  await page.evaluate(() => document.body.classList.remove("title-open"));
+  await page.evaluate(() => window.TYCHO.debug.startMission("close")); // fresh run, plan panel visible again
+  await page.waitForSelector(".mission-minimap", { state: "visible" });
+  // Click terrain pixel (476,476) - tests/fixtures/mars-mixed-plan.json's own
+  // first waypoint, a real cell that fixture's own measurement found splits
+  // the ensemble between "arrived" and "stalled" at default guardrails - via
+  // the minimap's ACTUAL rendered box (CSS can scale it away from its 220px
+  // canvas attribute), not a hardcoded pixel guess.
+  const minimapBox = await page.locator(".mission-minimap").boundingBox();
+  const marsTerrainW = marsTerrainInfo.width;
+  // The full 3-waypoint route from tests/fixtures/mars-mixed-plan.json,
+  // clicked in order - that fixture's own measurement found this exact
+  // route splits between "arrived" and "stalled" at default guardrails, so
+  // the dry-run result below is a real mixed-outcome proof, not a
+  // one-sided demo.
+  for (const wp of [{ x: 476, y: 476 }, { x: 447, y: 427 }, { x: 455, y: 441 }]) {
+    await page.click(".mission-minimap", {
+      position: { x: (wp.x / marsTerrainW) * minimapBox.width, y: (wp.y / marsTerrainW) * minimapBox.height },
+    });
+  }
+  await page.waitForFunction(() => !document.querySelector(".mission-dry-run-btn")?.disabled, null, { timeout: 5000 });
+  assert.equal(await page.evaluate(() => window.TYCHO.debug.getLiveLoopCount()), 1, "exactly one render loop must be live before the dry run starts");
+
+  const frameCountAtClick = await page.evaluate(() => window.TYCHO.debug.getFrameCount());
+  await page.click(".mission-dry-run-btn");
+
+  let sawFrameAdvance = false;
+  let sawSingleLiveLoop = true;
+  await waitUntil(async () => {
+    const [frameCount, liveLoopCount, resultVisible] = await page.evaluate(() => [
+      window.TYCHO.debug.getFrameCount(),
+      window.TYCHO.debug.getLiveLoopCount(),
+      !document.querySelector(".mission-dry-run-result")?.hidden,
+    ]);
+    if (frameCount > frameCountAtClick) sawFrameAdvance = true;
+    if (liveLoopCount !== 1) sawSingleLiveLoop = false;
+    return resultVisible;
+  }, 20000, "the dry-run result panel never became visible");
+
+  assert.ok(sawFrameAdvance, "the render loop's frame counter never advanced while the dry run was in flight - it blocked the main thread");
+  assert.ok(sawSingleLiveLoop, "more than one render loop was live during the dry run");
+  assert.equal(await page.evaluate(() => window.TYCHO.debug.getLiveLoopCount()), 1, "exactly one render loop must still be live after the dry run finishes");
+
+  const dryRunText = await page.evaluate(() => document.querySelector(".mission-dry-run-result").textContent);
+  assert.match(dryRunText, /100 simulated sols:.*arrived.*held.*tipped.*stalled/, `dry run did not render 100 results with a full outcome breakdown: "${dryRunText}"`);
+  assert.match(dryRunText, /Modeled drift: about 1% of distance \(a game assumption, not a measured rover figure\)/, `dry run result is missing the ALWAYS-present drift label: "${dryRunText}"`);
+  console.log(`Mars: Dry run rendered 100 results without blocking the render loop - "${dryRunText}"`);
+  // Restore the title-open state this block removed (real-DOM-only, see
+  // above) so every level switch below still gets its normal first-paint
+  // camera behavior (scene.js's camRig only snaps/starts its cinematic
+  // intro once titleOpen() reads false) instead of an intro transition
+  // racing the very next scene's own paint-sample assertion.
+  await page.evaluate(() => document.body.classList.add("title-open"));
 
   // ---------------------------------------------------------------------
   // Wave-1 sites (Chang'e-4, Apollo 17): every level whose real

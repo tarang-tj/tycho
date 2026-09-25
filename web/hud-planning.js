@@ -1,16 +1,18 @@
 // Mars sol-plan UI wiring, split out of hud.js (U4: keep files under ~250
 // lines): a click-to-place minimap (drawn directly from the terrain
-// elevation grid, independent of the 3D scene) plus guardrail controls and
-// an uplink button, with H5's keyboard-playable minimap (arrow keys move a
-// cursor, Enter/Space places, Backspace removes, U uplinks).
+// elevation grid, independent of the 3D scene) plus guardrail controls, a
+// Flight Rules "Dry run" button, and an uplink button, with H5's
+// keyboard-playable minimap (arrow keys move a cursor, Enter/Space places,
+// Backspace removes, U uplinks).
 import { drawMinimap, buildGuardrailControls, snapToGoal } from "./hud-minimap.js";
+import { formatDryRunSummary } from "./mars-run.js";
 
 const MAX_WAYPOINTS = 5;
 const GOAL_SNAP_PX = 10; // CSS px radius that snaps a click/cursor exactly onto the goal (H3)
 
 /** Render the sol-plan UI into `plan` (an existing, already-visible container element). */
 export function renderPlanningPanel(plan, opts) {
-  const { terrain, delayLabel, onUplink } = opts;
+  const { terrain, delayLabel, onUplink, onDryRun } = opts;
   plan.innerHTML = "";
 
   if (delayLabel) {
@@ -32,6 +34,7 @@ export function renderPlanningPanel(plan, opts) {
   plan.appendChild(canvas);
 
   const waypoints = [];
+  let dryRunBusy = false; // true while a "Dry run" press is in flight - blocks a second overlapping run, never the render loop
   let cursor = { x: terrain.meta?.spawn?.x ?? terrain.width / 2, y: terrain.meta?.spawn?.y ?? terrain.height / 2 };
   const CURSOR_STEP_PX = terrain.width / 48; // one minimap grid cell per keypress
 
@@ -46,6 +49,12 @@ export function renderPlanningPanel(plan, opts) {
   }
   redraw();
 
+  /** Uplink is gated on >=1 waypoint; dry run is gated the same way, PLUS a run already in flight (dryRunBusy). */
+  function syncButtons() {
+    uplinkBtn.disabled = waypoints.length === 0;
+    dryRunBtn.disabled = waypoints.length === 0 || dryRunBusy;
+  }
+
   function placeWaypoint(px, py) {
     if (waypoints.length >= MAX_WAYPOINTS) return;
     const snapped = snapToGoal(px, py, terrain.meta?.goal, terrain, canvas.clientWidth || canvas.width, canvas.clientHeight || canvas.height, GOAL_SNAP_PX);
@@ -53,7 +62,7 @@ export function renderPlanningPanel(plan, opts) {
     cursor = { ...snapped };
     redraw();
     help.textContent = `${waypoints.length}/${MAX_WAYPOINTS} waypoints placed.`;
-    uplinkBtn.disabled = waypoints.length === 0;
+    syncButtons();
   }
 
   canvas.addEventListener("click", (event) => {
@@ -85,7 +94,7 @@ export function renderPlanningPanel(plan, opts) {
       waypoints.pop();
       redraw();
       help.textContent = waypoints.length ? `${waypoints.length}/${MAX_WAYPOINTS} waypoints placed.` : HELP_DEFAULT;
-      uplinkBtn.disabled = waypoints.length === 0;
+      syncButtons();
       return;
     }
     if (event.key.toLowerCase() === "u" && !uplinkBtn.disabled) {
@@ -105,7 +114,7 @@ export function renderPlanningPanel(plan, opts) {
     waypoints.length = 0;
     redraw();
     help.textContent = HELP_DEFAULT;
-    uplinkBtn.disabled = true;
+    syncButtons();
   });
   controls.appendChild(clearBtn);
 
@@ -113,6 +122,46 @@ export function renderPlanningPanel(plan, opts) {
   guardrails.className = "mission-guardrails";
   plan.appendChild(guardrails);
   const guardrailValues = buildGuardrailControls(guardrails, opts.guardrails);
+
+  // Flight Rules "Dry run": N seeded headless sols of the CURRENT plan +
+  // guardrails, read live at press time so re-running after changing a
+  // guardrail shows the trade-off (see main.js's onDryRun/dry-run.js).
+  const dryRunBtn = document.createElement("button");
+  dryRunBtn.type = "button";
+  dryRunBtn.className = "mission-dry-run-btn";
+  dryRunBtn.textContent = "Dry run";
+  dryRunBtn.disabled = true;
+  const dryRunResult = document.createElement("div");
+  dryRunResult.className = "mission-dry-run-result";
+  dryRunResult.hidden = true;
+  dryRunBtn.addEventListener("click", () => {
+    if (!waypoints.length || dryRunBusy) return;
+    dryRunBusy = true;
+    syncButtons();
+    dryRunBtn.textContent = "Running dry run...";
+    onDryRun([...waypoints], guardrailValues.read())
+      .then((summary) => {
+        const { resultLine, driftLine } = formatDryRunSummary(summary);
+        dryRunResult.hidden = false;
+        dryRunResult.innerHTML = "";
+        for (const line of [resultLine, driftLine]) {
+          const p = document.createElement("p");
+          p.textContent = line;
+          dryRunResult.appendChild(p);
+        }
+      })
+      .catch(() => {
+        dryRunResult.hidden = false;
+        dryRunResult.textContent = "Dry run failed to complete; try again.";
+      })
+      .finally(() => {
+        dryRunBusy = false;
+        dryRunBtn.textContent = "Dry run";
+        syncButtons();
+      });
+  });
+  controls.appendChild(dryRunBtn);
+  plan.appendChild(dryRunResult);
 
   const uplinkBtn = document.createElement("button");
   uplinkBtn.type = "button";
@@ -123,6 +172,7 @@ export function renderPlanningPanel(plan, opts) {
     if (!waypoints.length) return;
     onUplink([...waypoints], guardrailValues.read());
     uplinkBtn.disabled = true;
+    dryRunBtn.disabled = true;
     clearBtn.disabled = true;
     canvas.style.pointerEvents = "none";
     canvas.tabIndex = -1;

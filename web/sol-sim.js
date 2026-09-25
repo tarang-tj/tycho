@@ -1,10 +1,9 @@
-// Pure headless sol-plan simulator for Flight Rules. Follows the autopilot
-// loop main.js's tickPhysics runs for a delivered Mars "plan" command
-// (steerTowardPoint/stepRover under planRoute's guardrails, with mission.js's
-// hold/tip/stall rules), with the differences listed in autopilotStep's
-// JSDoc: `autopilotStep` advances one tick, and
-// `runSolPlan` drives a whole sol headlessly for ensemble.js. No DOM/
-// three.js dependency, deterministic, unit-testable in node.
+// Pure headless sol-plan simulator for Flight Rules. `autopilotStep` is the
+// SAME loop main.js's tickPhysics calls for a delivered Mars "plan" command
+// (see main.js/mars-run.js) - not a reimplementation of it - so the real run
+// and the headless dry run can never silently diverge. `runSolPlan` drives a
+// whole sol headlessly with it, for ensemble.js's dry run. No DOM/three.js
+// dependency, deterministic, unit-testable in node.
 //
 // Delivery delay is intentionally NOT modeled here: main.js/signal.js
 // already proved (playability.test.mjs) that the rover never moves before
@@ -24,18 +23,12 @@ const PATH_SAMPLE_INTERVAL_S = 5; // downsample interval for truePath/believedPa
  * Advance a sol-plan autopilot by one physics tick. Steers the TRUE rover
  * toward the current path target using its BELIEVED (drift-offset)
  * position, steps physics on the true state, and advances the drift model
- * by the true displacement driven this tick. Shares the same steer/step
- * primitives as main.js's tickPhysics Mars branch, but is NOT an exact
- * mirror of it - two real differences, both intentional for headless
- * ensemble use:
- *   - holdReason zeroes control immediately here (this function checks
- *     `!autopilot.holdReason` before steering); tickPhysics has no such
- *     check and instead keeps driving any already-planned partial path
- *     until it runs out of waypoints, only then going idle.
- *   - this module plans each waypoint leg individually (see
- *     planLegsWithBoundaries below) to recover per-leg boundaries;
- *     tickPhysics calls copilot.js's planRoute once over the whole
- *     waypoint list and never sees leg boundaries at all.
+ * by the true displacement driven this tick. holdReason zeroes control
+ * immediately (checks `!autopilot.holdReason` before steering): a HOLD
+ * stops the rover the instant it is decided, true-side, exactly like the
+ * REAL Mars run does - main.js's tickPhysics calls this same function for
+ * its Mars "plan" branch (via mars-run.js), so both runs share one
+ * hold/steer/step loop instead of two that could quietly drift apart.
  *
  * @param {object} params
  * @param {object} params.trueState - current true rover state (rover-sim.js `createRover`/`stepRover` shape)
@@ -74,8 +67,15 @@ export function autopilotStep({ trueState, autopilot, terrain, dt, driftModel = 
   };
 }
 
-/** Plan every waypoint leg individually (via copilot.js's own planRoute, unmodified) so callers can recover per-leg boundaries planRoute's single-call return doesn't expose. */
-function planLegsWithBoundaries(spawn, waypoints, terrain, g) {
+/**
+ * Plan every waypoint leg individually (via copilot.js's own planRoute,
+ * unmodified) so callers can recover per-leg boundaries planRoute's
+ * single-call return doesn't expose. Exported (alongside
+ * `finalizeLegOutcomes` below) so main.js's live Mars run can compute the
+ * SAME per-leg grid this module does for the headless dry run, instead of a
+ * third reimplementation of this bookkeeping - see web/mars-run.js.
+ */
+export function planLegsWithBoundaries(spawn, waypoints, terrain, g) {
   const path = [];
   const legEndIndex = new Array(waypoints.length).fill(-1);
   const legOutcomes = new Array(waypoints.length).fill("unreached");
@@ -110,8 +110,9 @@ function planLegsWithBoundaries(spawn, waypoints, terrain, g) {
  * radius, which must not read as "unreached" when the plan in fact
  * succeeded; "held" is already fully decided at planning time, before any
  * driving happens, so it never needs a drive-time downgrade either.
+ * Exported for the same reason as `planLegsWithBoundaries` above.
  */
-function finalizeLegOutcomes(legOutcomes, legEndIndex, finalIndex, outcome) {
+export function finalizeLegOutcomes(legOutcomes, legEndIndex, finalIndex, outcome) {
   if (outcome !== "tipped" && outcome !== "stalled") return legOutcomes;
   const result = [...legOutcomes];
   for (let i = 0; i < result.length; i++) {

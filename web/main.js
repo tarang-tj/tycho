@@ -5,9 +5,9 @@
 // including a `debug` surface used by the automated boot probe.
 import { loadTerrain } from "./terrain-data.js";
 import { createSignalLink } from "./signal.js";
-import { createRover, stepRover, steerTowardPoint } from "./rover-sim.js";
+import { createRover, stepRover } from "./rover-sim.js";
 import { createScene } from "./scene.js";
-import { planRoute, DEFAULT_GUARDRAILS } from "./copilot.js";
+import { DEFAULT_GUARDRAILS } from "./copilot.js";
 import { createMission, startMission, updateMission, whatHappenedLine, averageDelaySec } from "./mission.js";
 import { deriveCopilotDisplay, planVisibleToPlayer } from "./telemetry-view.js";
 import { createGenerationGuard, createSingleLoop } from "./async-guards.js";
@@ -16,10 +16,14 @@ import { createHud } from "./hud.js";
 import { LEVELS, resolveScenario, resolveDelaySec, resolveDelayLabel, getScenarios } from "./levels.js";
 import { updateHudReadout } from "./hud-readout.js";
 import { wireControls } from "./controls.js";
+import { autopilotStep } from "./sol-sim.js";
+import { createDriftModel, DRIFT_PCT } from "./drift.js";
+import { runDryRun } from "./dry-run.js";
+import { evaluateObjectives } from "./objectives.js";
+import { createMarsAutopilot, finalizeMarsLegOutcomes, pickRealRunSeed, DRY_RUN_N, DRY_RUN_BASE_SEED } from "./mars-run.js";
 
 const FIXED_DT = 1 / 60;
 const PUBLISHED_URL = "https://tarang-tj.github.io/tycho/";
-const WAYPOINT_ARRIVE_RADIUS_M = 6;
 const TERMINAL_STATUSES = new Set(["won", "tipped", "stalled", "held"]);
 
 const canvas = document.getElementById("sceneCanvas");
@@ -48,8 +52,13 @@ let mission = createMission("lunokhod", LEVELS.lunokhod);
 let lastMissionStatus = mission.status;
 let guardrails = { ...DEFAULT_GUARDRAILS };
 let autopilot = null; // { path: [{x,y}], index, holdReason } - TRUE (present) state, on the rover
+let marsDriftModel = null; // seeded drift model for the REAL Mars run (mars-run.js's pickRealRunSeed), null off Mars
 let plannedWaypoints = []; // the sol plan as uplinked, kept separate from the live autopilot path
 let scoreboardData = loadScoreboard();
+let runMaxSlopeDeg = 0; // this run's peak slope, for objectives.js's slope objective
+let lastDryRunSummary = null; // ensemble.js-shaped summary from the plan panel's last "Dry run" press
+let plannedPrediction = null; // { arrivalRate, wilson95 } snapshot taken at uplink time, or null if no dry run was done first
+let frameCount = 0; // advances every render frame; boot-probed to prove the loop keeps running during an async dry run
 
 // H1: what the player has actually SEEN of the co-pilot's decisions so far,
 // tracked so a status-line/hazard-flash event fires exactly once, at the
@@ -92,6 +101,9 @@ const api = {
     // H4: exposed so a Playwright/manual probe can confirm repeated fast
     // level switches never leave more than one active render loop.
     getLiveLoopCount: () => runLoop.getLiveCount(),
+    // Flight Rules: exposed so a boot probe can confirm the render loop
+    // keeps advancing while an async "Dry run" is in flight off-thread.
+    getFrameCount: () => frameCount,
   },
 };
 window.TYCHO = api;
@@ -124,8 +136,16 @@ function handleMissionTransition() {
 
   const timeSec = (mission.endSimTime ?? simTime) - (mission.startSimTime ?? simTime);
   const copilotOn = LEVELS[currentLevelKey].mode === "plan" && guardrails.hazardMode === "reroute";
+  const objectives = evaluateObjectives(currentLevelKey, {
+    outcome: mission.outcome, timeSec, maxSlopeDeg: runMaxSlopeDeg, distanceM: mission.distanceTraveledM, copilotOn,
+  });
+  // Medals: the objective ids this run actually met, so the scoreboard's
+  // saved history can show them later without re-deriving anything.
+  const medals = objectives.filter((o) => o.met).map((o) => o.id);
+  const legOutcomes = currentLevelKey === "mars" ? finalizeMarsLegOutcomes(autopilot, mission.outcome) : null;
   scoreboardData = recordRun(scoreboardData, currentLevelKey, {
     outcome: mission.outcome, timeSec, distanceM: mission.distanceTraveledM, copilotOn,
+    predictedArrival: plannedPrediction?.arrivalRate, medals,
   });
   saveScoreboard(scoreboardData);
   hud.updateScoreboard(LEVELS[currentLevelKey].label, aggregate(scoreboardData, currentLevelKey));
@@ -138,6 +158,7 @@ function handleMissionTransition() {
     outcome: mission.outcome, timeSec, distanceM: mission.distanceTraveledM,
     whatHappened: whatHappenedLine(mission),
     onRetry: () => beginRun(activeScenarioKey),
+    objectives, legOutcomes, predicted: plannedPrediction,
     share: {
       levelLabel: LEVELS[currentLevelKey].label, outcome: mission.outcome, timeSec,
       delaySec: averageDelaySec(mission) || signal?.oneWayDelaySec || null,
@@ -151,8 +172,11 @@ function tickPhysics(dt) {
   const delivered = signal.pullDeliveredCommands(simTime);
   for (const cmd of delivered) {
     if (cmd.type === "plan") {
-      const result = planRoute({ x: trueState.x, y: trueState.y }, cmd.waypoints, terrain, guardrails);
-      autopilot = { path: result.path, index: 0, holdReason: result.status === "HOLD" ? result.reason : null };
+      // Flight Rules: the real run drives via sol-sim.js's autopilotStep
+      // below, planned with the SAME per-leg planner the dry run uses
+      // (mars-run.js), on a fresh seed the dry run never sampled.
+      autopilot = createMarsAutopilot({ x: trueState.x, y: trueState.y }, cmd.waypoints, terrain, guardrails);
+      marsDriftModel = createDriftModel({ seed: pickRealRunSeed(), driftPct: DRIFT_PCT });
       // No hud.setStatusLine/scene.flashHazard here: those are the rover's
       // own decision, and must reach the player only through telemetry once
       // it becomes visible (see the H1 block below) - firing them here at
@@ -162,24 +186,17 @@ function tickPhysics(dt) {
     }
   }
 
-  let control = currentControl;
+  // No maxSlopeDeg override on the manual-drive path: rover-sim's own
+  // default (the real tip angle) is the physical limit; the co-pilot's
+  // lower guardrail only gates autopilotStep's autonomous Mars driving.
   if (autopilot) {
-    const target = autopilot.path[autopilot.index];
-    if (target) {
-      control = steerTowardPoint(trueState, target);
-      const distM = Math.hypot(target.x - trueState.x, target.y - trueState.y) * terrain.metersPerPixel;
-      if (distM < WAYPOINT_ARRIVE_RADIUS_M) autopilot.index += 1;
-    } else {
-      control = { throttle: 0, steer: 0 };
-    }
+    const step = autopilotStep({ trueState, autopilot, terrain, dt, driftModel: marsDriftModel });
+    trueState = step.trueState;
+    autopilot = step.autopilot;
+  } else {
+    trueState = stepRover(trueState, currentControl, terrain, dt);
   }
-
-  // No maxSlopeDeg override here: rover-sim's own default (a real tip
-  // angle measured over a rover-scale baseline, see terrain-data.js) is the
-  // physical limit. The co-pilot's guardrail (DEFAULT_GUARDRAILS.maxSlopeDeg,
-  // lower) is a separate, more conservative "hold before you'd actually tip"
-  // threshold applied only to autonomous Mars driving, not to this physics step.
-  trueState = stepRover(trueState, control, terrain, dt);
+  runMaxSlopeDeg = Math.max(runMaxSlopeDeg, trueState.slopeDeg);
   scene?.updateTrueState?.(trueState);
   // copilotHold/planActive/autopilotPath ride the SAME delayed telemetry
   // channel as position (C1/H1): the player never learns any of them before
@@ -225,6 +242,7 @@ function tickPhysics(dt) {
 }
 
 function frameBody(nowMs) {
+  frameCount += 1;
   if (lastFrameMs == null) lastFrameMs = nowMs;
   const dt = Math.min(0.1, (nowMs - lastFrameMs) / 1000);
   lastFrameMs = nowMs;
@@ -317,6 +335,10 @@ function beginRun(scenarioKey) {
   visibleState = null;
   simTime = 0;
   autopilot = null;
+  marsDriftModel = null;
+  runMaxSlopeDeg = 0;
+  lastDryRunSummary = null;
+  plannedPrediction = null;
   plannedWaypoints = [];
   pendingDownPulses = [];
   lastVisiblePlanActive = false;
@@ -335,9 +357,23 @@ function beginRun(scenarioKey) {
     el.delayNote.textContent = `Real one-way delay: ${scenario.realMinutes} min. Compressed ${scenario.compression}x for play.`;
     hud.showPlanning({
       terrain, guardrails, delayLabel: el.delayNote.textContent,
+      // Flight Rules dry run: N=100 seeded headless sols of the CURRENT
+      // plan/guardrails (mars-run.js's DRY_RUN_N; see its header for why),
+      // off the main thread when possible (dry-run.js). Re-running after
+      // changing a guardrail shows the trade-off, since each press reads
+      // the plan panel's live values.
+      onDryRun: (waypoints, guardrailValues) => runDryRun({
+        terrain, assetKey: level.assetKey, spawn, waypoints, guardrails: guardrailValues,
+        N: DRY_RUN_N, baseSeed: DRY_RUN_BASE_SEED, driftPct: DRIFT_PCT,
+      }).then((summary) => { lastDryRunSummary = summary; return summary; }),
       onUplink: (waypoints, guardrailValues) => {
         guardrails = guardrailValues;
         plannedWaypoints = waypoints;
+        // Snapshot whatever the LAST dry run (against these same guardrails)
+        // showed, at the moment the plan actually ships - not re-fetched
+        // later, so the end card's predicted-vs-actual line always reflects
+        // what the player actually saw before committing.
+        plannedPrediction = lastDryRunSummary ? { arrivalRate: lastDryRunSummary.arrivalRate, wilson95: lastDryRunSummary.wilson95 } : null;
         signal.uplink({ type: "plan", waypoints }, simTime);
         pulseUplink();
         if (typeof scene?.setWaypoints === "function") scene.setWaypoints(waypoints, { units: "px" });
@@ -365,6 +401,7 @@ function resetRun() {
   signal = null;
   visibleState = null;
   autopilot = null;
+  marsDriftModel = null;
   plannedWaypoints = [];
   pendingDownPulses = [];
 }

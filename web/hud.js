@@ -11,7 +11,8 @@
 // touches web/index.html or web/scene.js.
 import { renderPlanningPanel } from "./hud-planning.js";
 import { copyResultText } from "./hud-clipboard.js";
-import { formatShareResult } from "./share-result.js";
+import { formatShareResult, formatLegGrid } from "./share-result.js";
+import { formatPredictedLine } from "./mars-run.js";
 
 /** Create the mission panel DOM inside `hostEl` (the existing .hud side panel). Returns a handle with render functions. */
 export function createHud(hostEl) {
@@ -104,7 +105,7 @@ export function createHud(hostEl) {
     statusLine.textContent = text ?? "";
   }
 
-  function showEndCard({ outcome, timeSec, distanceM, whatHappened, onRetry, share }) {
+  function showEndCard({ outcome, timeSec, distanceM, whatHappened, onRetry, share, objectives, legOutcomes, predicted }) {
     plan.hidden = true;
     endcard.hidden = false;
     endcard.innerHTML = "";
@@ -123,6 +124,28 @@ export function createHud(hostEl) {
     honest.textContent = whatHappened;
     endcard.appendChild(honest);
 
+    if (objectives?.length) {
+      const list = document.createElement("ul");
+      list.className = "mission-endcard-objectives";
+      for (const objective of objectives) {
+        const item = document.createElement("li");
+        item.className = `mission-objective ${objective.met ? "met" : "unmet"}`;
+        item.textContent = `${objective.met ? "[x]" : "[ ]"} ${objective.label}`;
+        list.appendChild(item);
+      }
+      endcard.appendChild(list);
+    }
+
+    // Flight Rules: the predicted-vs-actual line only exists on Mars, and
+    // only when a dry run was done before this plan was uplinked.
+    const predictedLine = formatPredictedLine(predicted, outcome);
+    if (predictedLine) {
+      const p = document.createElement("p");
+      p.className = "mission-endcard-predicted";
+      p.textContent = predictedLine;
+      endcard.appendChild(p);
+    }
+
     const actions = document.createElement("div");
     actions.className = "mission-endcard-actions";
     endcard.appendChild(actions);
@@ -139,7 +162,11 @@ export function createHud(hostEl) {
       copyBtn.type = "button";
       copyBtn.className = "mission-copy-btn";
       copyBtn.textContent = "Copy result";
-      const line = formatShareResult(share);
+      // formatShareResult's own output stays byte-identical for existing
+      // inputs (regression contract); the leg grid, when present, is
+      // appended here by the caller, not baked into that function.
+      const grid = legOutcomes?.length ? ` ${formatLegGrid(legOutcomes)}` : "";
+      const line = formatShareResult(share) + grid;
       copyBtn.addEventListener("click", () => copyResultText(line, copyBtn));
       actions.appendChild(copyBtn);
     }
@@ -164,6 +191,18 @@ export function createHud(hostEl) {
       const row = document.createElement("p");
       row.className = "mission-scoreboard-row";
       row.textContent = `${label}: ${formatRate(rate)} (n=${n})`;
+      scoreboard.appendChild(row);
+    }
+
+    // Flight Rules calibration: predicted (dry-run) vs actual arrival rate,
+    // over the runs that carried a dry-run prediction at uplink time. Only
+    // ever populated on Mars (the only level with a dry run), so this row
+    // stays absent on every other level.
+    const cal = stats.calibration;
+    if (cal?.nPredicted > 0) {
+      const row = document.createElement("p");
+      row.className = "mission-scoreboard-calibration";
+      row.textContent = `Flight Rules calibration: predicted ${formatRate(cal.meanPredicted)}, actual ${formatRate(cal.actualRate)} (${cal.note})`;
       scoreboard.appendChild(row);
     }
   }

@@ -109,6 +109,16 @@ button { font: inherit; color: inherit; }
 .mission-scoreboard { margin-top: 0.8rem; padding-top: 0.6rem; border-top: 1px solid var(--line); }
 .mission-scoreboard-title { font-family: var(--mono); font-size: 0.82rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
 .mission-scoreboard-row { font-family: var(--mono); font-size: 0.82rem; color: #c9c7c1; margin: 0 0 0.2rem !important; }
+.mission-scoreboard-calibration { font-family: var(--mono); font-size: 0.78rem; color: var(--muted); margin: 0.3rem 0 0 !important; }
+.mission-dry-run-btn { border-color: color-mix(in srgb, var(--accent) 40%, var(--line-strong)) !important; text-align: center !important; }
+.mission-dry-run-result { margin: 0.4rem 0; padding: 0.5rem 0.6rem; border: 1px solid var(--line); border-radius: 4px; background: rgba(0, 0, 0, 0.25); font-family: var(--mono); font-size: 0.78rem; color: var(--muted); }
+.mission-dry-run-result p { margin: 0 0 0.25rem; }
+.mission-dry-run-result p:last-child { margin-bottom: 0; }
+.mission-endcard-objectives { list-style: none; margin: 0 0 0.5rem; padding: 0; font-family: var(--mono); font-size: 0.8rem; }
+.mission-objective { padding: 0.15rem 0; }
+.mission-objective.met { color: var(--accent); }
+.mission-objective.unmet { color: var(--muted); }
+.mission-endcard-predicted { font-family: var(--mono); font-size: 0.8rem; color: var(--muted); }
 
 /* Title screen over the live scene. */
 .title-screen {
