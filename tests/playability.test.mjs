@@ -32,6 +32,31 @@ function hasRealAssets(assetKey) {
   return existsSync(`${ASSETS_ROOT}${assetKey}/height.bin`) && existsSync(`${ASSETS_ROOT}${assetKey}/meta.json`);
 }
 
+// M4: missing assets for a level that ships (is in LEVEL_ORDER) must FAIL
+// the gate, not silently SKIP - a level with missing assets used to slip
+// through as a green skip while the data lane was pending; now every
+// LEVEL_ORDER level ships, so a missing directory is a real regression.
+// Set TYCHO_ALLOW_MISSING_ASSETS=1 to intentionally skip during a data
+// lane still in progress.
+const ALLOW_MISSING_ASSETS = process.env.TYCHO_ALLOW_MISSING_ASSETS === "1";
+
+/** Registers `name` as a real test, a `skip`ped test (only if explicitly allowed), or a failing test. */
+function registerAssetGatedTest(name, assetKey, run) {
+  if (hasRealAssets(assetKey)) {
+    test(name, run);
+    return;
+  }
+  if (ALLOW_MISSING_ASSETS) {
+    test(name, { skip: `assets/${assetKey}/ not present in this worktree (TYCHO_ALLOW_MISSING_ASSETS=1)` }, () => {});
+    return;
+  }
+  test(name, () => {
+    assert.fail(`assets/${assetKey}/ is missing (height.bin/meta.json not found). Every level in ` +
+      "LEVEL_ORDER must ship real assets. If this is intentional (e.g. a data lane still in progress), " +
+      "set TYCHO_ALLOW_MISSING_ASSETS=1 to skip it explicitly.");
+  });
+}
+
 function loadRealTerrain(body) {
   const base = `${ASSETS_ROOT}${body}/`;
   const meta = JSON.parse(readFileSync(`${base}meta.json`, "utf8"));
@@ -67,11 +92,7 @@ function downsample(path, n) {
 const ASSET_DIRS = [...new Set(LEVEL_ORDER.map((key) => LEVELS[key].assetKey))];
 
 for (const assetKey of ASSET_DIRS) {
-  if (!hasRealAssets(assetKey)) {
-    test(`${assetKey}: A* finds a spawn->goal path under the default slope guardrail`, { skip: `assets/${assetKey}/ not present in this worktree (data lane pending)` }, () => {});
-    continue;
-  }
-  test(`${assetKey}: A* finds a spawn->goal path under the default slope guardrail`, () => {
+  registerAssetGatedTest(`${assetKey}: A* finds a spawn->goal path under the default slope guardrail`, assetKey, () => {
     const terrain = loadRealTerrain(assetKey);
     const { spawn, goal } = terrain.meta;
     const { path, iterations } = findGlobalPath(terrain, spawn, goal, DEFAULT_GUARDRAILS.maxSlopeDeg);
@@ -154,8 +175,8 @@ test("moon: a delayed-telemetry bot reaches the goal from spawn without tipping 
 // (U1: the flagship level - drive to where Lunokhod 2 has been parked since 1973)
 
 // Le Monnier's crater-field microterrain (small scattered craters near the
-// spawn->goal line, see plans/260923-2234-tycho-rover/reports/lunokhod-data.md)
-// makes the raw 1px-step A* route noticeably more jagged than Tycho's single
+// spawn->goal line) makes the raw 1px-step A* route noticeably more jagged
+// than Tycho's single
 // clean climb: following it one waypoint at a time (WAYPOINT_ARRIVE_RADIUS_M)
 // forces a full course-correction at every zigzag and never lets the rover
 // build speed. A pure-pursuit lookahead (steer at the farthest path point
@@ -336,7 +357,13 @@ function runLiveDelayedBot(level) {
   let lastCommandAt = -Infinity;
   const CONTROL_INTERVAL_S = 0.1;
   const dt = 1 / 20;
-  const BUDGET_S = 3000;
+  // H1 follow-up: Chang'e-4's corrected (LRO-frame) goal re-picked a spawn
+  // ~2.5 km out (was ~1.5 km pre-fix) along a more jagged dilated A* route,
+  // so the pure-pursuit bot needs more simulated time to finish than the
+  // 3000s that was enough before - confirmed it still wins with margin at
+  // 6000s (actual: ~4700s). This is a test-time budget only; it doesn't
+  // change what the game itself allows a player to do.
+  const BUDGET_S = 6000;
   let simTime = 0;
 
   let mission = startMission(createMission(level.key, level), 0);
@@ -436,11 +463,7 @@ for (const key of LEVEL_ORDER) {
   const name = level.mode === "plan"
     ? `${key}: a sol plan uplinked through the real delay reaches the goal under the shipped DEFAULT guardrails`
     : `${key}: a delayed-telemetry bot reaches the goal from spawn without tipping or driving onto no-data terrain`;
-  if (!hasRealAssets(level.assetKey)) {
-    test(name, { skip: `assets/${level.assetKey}/ not present in this worktree (data lane pending)` }, () => {});
-    continue;
-  }
-  test(name, () => {
+  registerAssetGatedTest(name, level.assetKey, () => {
     if (level.mode === "plan") runSolPlanBot(level, resolveScenario());
     else runLiveDelayedBot(level);
   });
