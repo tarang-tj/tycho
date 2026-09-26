@@ -573,6 +573,65 @@ try {
     await driftPage.close();
   }
 
+  // Free drive (free-drive.js): an opt-in, labeled not-realistic mode. It must
+  // remove the delay on a Moon level, say so on screen, never touch the
+  // scoreboard or objectives, mark the share line, and stay off on Mars.
+  const freePage = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  try {
+    freePage.on("pageerror", (error) => errors.push(error.message));
+    await freePage.addInitScript(() => {
+      window.__copied = null;
+      Object.defineProperty(navigator, "clipboard", { value: { writeText: (t) => { window.__copied = t; return Promise.resolve(); } }, configurable: true });
+    });
+    await freePage.goto(`http://127.0.0.1:${port}/web/`, { waitUntil: "networkidle" });
+    await freePage.waitForFunction(() => window.TYCHO?.ready === true, null, { timeout: 10000 });
+    await freePage.evaluate(() => window.TYCHO.debug.startMission());
+    assert.ok((await freePage.evaluate(() => window.TYCHO.debug.getDelaySec())) > 1, "Lunokhod should start with its real delay before Free drive is turned on");
+    await freePage.evaluate(() => document.getElementById("freeDriveToggle").click());
+    // Snapshot AFTER the toggle: turning it on restarts the realistic run in
+    // progress, which is correctly recorded as abandoned. Only what the
+    // free-drive run itself writes is checked below.
+    const storageBefore = await freePage.evaluate(() => JSON.stringify({ ...localStorage }));
+    assert.equal(await freePage.evaluate(() => window.TYCHO.debug.isFreeDriveRun()), true, "turning Free drive on did not start a free-drive run");
+    assert.equal(await freePage.evaluate(() => window.TYCHO.debug.getDelaySec()), 0, "Free drive did not remove the signal delay");
+    const note = await freePage.evaluate(() => { const n = document.getElementById("delayNote"); return n.hidden ? "" : n.textContent; });
+    assert.match(note, /not realistic/i, `Free drive label missing while driving: "${note}"`);
+    const goal = await freePage.evaluate(() => window.TYCHO.getTerrainInfo().goal);
+    const spot = await freePage.evaluate((g) => {
+      const mpp = window.TYCHO.getTerrainInfo().metersPerPixel;
+      const r = Math.floor(12 / mpp);
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+        if (Math.hypot(dx, dy) * mpp > 12) continue;
+        if (window.TYCHO.debug.sampleSlope(g.x + dx, g.y + dy) < 20) return { x: g.x + dx, y: g.y + dy };
+      }
+      return null;
+    }, goal);
+    await freePage.evaluate((p) => window.TYCHO.debug.placeRoverAt(p.x, p.y, 0), spot);
+    await waitUntil(async () => (await freePage.evaluate(() => window.TYCHO.debug.getMission().status)) === "won", 5000, "free-drive win near the goal was never reached");
+    await freePage.waitForSelector(".mission-endcard", { state: "visible", timeout: 5000 });
+    const end = await freePage.evaluate(() => ({
+      text: document.querySelector(".mission-endcard").innerText,
+      objectives: document.querySelectorAll(".mission-objective").length,
+      storage: JSON.stringify({ ...localStorage }),
+    }));
+    assert.match(end.text, /Free drive run: no signal delay, not realistic, not counted/, "free-drive end card does not say the run is not realistic / not counted");
+    assert.equal(end.objectives, 0, "a free-drive run showed objectives (par/medals) it must not be scored on");
+    assert.equal(end.storage, storageBefore, "a free-drive run changed the saved scoreboard");
+    await freePage.evaluate(() => document.querySelector(".mission-copy-btn").click());
+    await freePage.waitForFunction(() => window.__copied !== null, null, { timeout: 3000 });
+    const shared = await freePage.evaluate(() => window.__copied);
+    assert.match(shared, /free drive, no delay \(not realistic\)/, `free-drive share line not marked: "${shared}"`);
+    assert.doesNotMatch(shared, /delay 0\.00 s/, "free-drive share line still reads like a real delay");
+    await freePage.evaluate(() => window.TYCHO.switchLevel("mars"));
+    await freePage.waitForFunction(() => window.TYCHO.getLevel() === "mars" && window.TYCHO.ready === true, null, { timeout: 10000 });
+    assert.equal(await freePage.evaluate(() => document.getElementById("freeDriveToggle").disabled), true, "Free drive must be disabled on Mars");
+    await freePage.evaluate(() => window.TYCHO.debug.startMission("close"));
+    assert.ok((await freePage.evaluate(() => window.TYCHO.debug.getDelaySec())) > 1, "Mars lost its delay while Free drive was checked");
+    console.log(`Free drive: delay 0 on Lunokhod, labeled, win not scored or saved, share line "${shared.split(" · ").slice(0, 4).join(" · ")}", disabled on Mars.`);
+  } finally {
+    await freePage.close();
+  }
+
   // ---------------------------------------------------------------------
   // Flight Rules "Dry run": placing a waypoint through the real UI (not the
   // debug API) and pressing Dry run must render N=100 results WITHOUT

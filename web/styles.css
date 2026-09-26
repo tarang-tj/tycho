@@ -230,3 +230,6 @@ body.title-open .hud { transform: translateY(10px); }
   opacity: 0; pointer-events: none; transition: opacity 0.25s ease, transform 0.25s ease;
 }
 .tycho-toast.visible { opacity: 1; transform: translate(-50%, 0); }
+.free-drive-toggle { display: flex; align-items: center; gap: 0.4rem; margin-top: 0.5rem; font-size: 0.8rem; color: var(--muted); cursor: pointer; }
+.free-drive-toggle span { color: var(--muted); opacity: 0.8; }
+.free-drive-toggle input:disabled + * , .free-drive-toggle:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }

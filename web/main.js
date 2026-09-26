@@ -20,6 +20,7 @@ import { autopilotStep } from "./sol-sim.js";
 import { createDriftModel, DRIFT_PCT } from "./drift.js";
 import { runDryRun } from "./dry-run.js";
 import { evaluateObjectives } from "./objectives.js";
+import { freeDriveApplies, runDelaySec, FREE_DRIVE_NOTE, FREE_DRIVE_ENDCARD_NOTE } from "./free-drive.js";
 import { createMarsAutopilot, finalizeMarsLegOutcomes, pickRealRunSeed, planSignature, DRY_RUN_N, DRY_RUN_BASE_SEED, createMarsTrackReveal } from "./mars-run.js";
 
 const FIXED_DT = 1 / 60;
@@ -32,6 +33,8 @@ const el = {
   terrainBanner: document.getElementById("terrainBanner"),
   noDataLegend: document.getElementById("noDataLegend"),
   delayNote: document.getElementById("delayNote"),
+  freeDriveToggle: document.getElementById("freeDriveToggle"),
+  controlsHelp: document.querySelector(".controls-help"),
   body: document.getElementById("hudBody"),
   delay: document.getElementById("hudDelay"),
   inFlight: document.getElementById("hudInFlight"),
@@ -61,6 +64,8 @@ let runMaxSlopeDeg = 0; // this run's peak slope, for objectives.js's slope obje
 let lastDryRunSummary = null; // ensemble.js-shaped summary from the plan panel's last "Dry run" press, for the CURRENT run only (see runEpochGuard below)
 let lastDryRunSignature = null; // planSignature() of the waypoints+guardrails lastDryRunSummary was computed against, so a stale plan never gets credited with a summary that no longer matches it (review finding 2)
 let plannedPrediction = null; // { arrivalRate, wilson95 } snapshot taken at uplink time, or null if no dry run was done first
+let freeDrive = false; // the player's Free drive toggle (free-drive.js)
+let runIsFreeDrive = false; // whether the CURRENT run is a no-delay free-drive run: never scored or recorded
 let frameCount = 0; // advances every render frame; boot-probed to prove the loop keeps running during an async dry run
 
 // H1: what the player has actually SEEN of the co-pilot's decisions so far,
@@ -117,6 +122,7 @@ const api = {
     getLastMarsDrift: () => lastMarsDrift,
     sampleSlope(x, y) { return terrain?.slopeDeg(x, y) ?? null; },
     getDelaySec: () => signal?.oneWayDelaySec ?? null,
+    isFreeDriveRun: () => runIsFreeDrive,
     // H4: exposed so a Playwright/manual probe can confirm repeated fast
     // level switches never leave more than one active render loop.
     getLiveLoopCount: () => runLoop.getLiveCount(),
@@ -145,7 +151,7 @@ function sendCommand(cmd) {
   // not just visible later as a stale telemetry number: "sent" registers
   // immediately, the arrival time is the real one-way delay. This is
   // Earth-side knowledge (the player just sent it), not a present-time leak.
-  hud.setStatusLine(`Sent, arrives in ${signal.oneWayDelaySec.toFixed(1)} s...`);
+  if (!runIsFreeDrive) hud.setStatusLine(`Sent, arrives in ${signal.oneWayDelaySec.toFixed(1)} s...`);
 }
 
 function handleMissionTransition() {
@@ -155,7 +161,8 @@ function handleMissionTransition() {
 
   const timeSec = (mission.endSimTime ?? simTime) - (mission.startSimTime ?? simTime);
   const copilotOn = LEVELS[currentLevelKey].mode === "plan" && guardrails.hazardMode === "reroute";
-  const objectives = evaluateObjectives(currentLevelKey, {
+  // Free drive runs are not scored: no objectives, medals or scoreboard record.
+  const objectives = runIsFreeDrive ? [] : evaluateObjectives(currentLevelKey, {
     outcome: mission.outcome, timeSec, maxSlopeDeg: runMaxSlopeDeg, distanceM: mission.distanceTraveledM, copilotOn,
   });
   // Medals: the objective ids this run actually met, so the scoreboard's
@@ -170,12 +177,14 @@ function handleMissionTransition() {
     ? { ...marsTrackReveal.finalize(marsDriftModel, trueState, terrain), terrain }
     : null;
   lastMarsDrift = marsDrift;
-  scoreboardData = recordRun(scoreboardData, currentLevelKey, {
-    outcome: mission.outcome, timeSec, distanceM: mission.distanceTraveledM, copilotOn,
-    predictedArrival: plannedPrediction?.arrivalRate, medals,
-  });
-  saveScoreboard(scoreboardData);
-  hud.updateScoreboard(LEVELS[currentLevelKey].label, aggregate(scoreboardData, currentLevelKey));
+  if (!runIsFreeDrive) {
+    scoreboardData = recordRun(scoreboardData, currentLevelKey, {
+      outcome: mission.outcome, timeSec, distanceM: mission.distanceTraveledM, copilotOn,
+      predictedArrival: plannedPrediction?.arrivalRate, medals,
+    });
+    saveScoreboard(scoreboardData);
+    hud.updateScoreboard(LEVELS[currentLevelKey].label, aggregate(scoreboardData, currentLevelKey));
+  }
   // The reveal: at mission end, show the TRUE (present) rover position
   // alongside whatever delayed telemetry the player was actually steering
   // by, so the gap between "what you saw" and "where it really was" is visible.
@@ -183,13 +192,13 @@ function handleMissionTransition() {
   scene?.updateTrueState?.(trueState);
   hud.showEndCard({
     outcome: mission.outcome, timeSec, distanceM: mission.distanceTraveledM,
-    whatHappened: whatHappenedLine(mission),
+    whatHappened: runIsFreeDrive ? `${FREE_DRIVE_ENDCARD_NOTE} ${whatHappenedLine(mission)}` : whatHappenedLine(mission),
     onRetry: () => beginRun(activeScenarioKey),
     objectives, legOutcomes, predicted: plannedPrediction, marsDrift,
     share: {
       levelLabel: LEVELS[currentLevelKey].label, outcome: mission.outcome, timeSec,
       delaySec: averageDelaySec(mission) || signal?.oneWayDelaySec || null,
-      copilotOn, url: PUBLISHED_URL,
+      copilotOn, url: PUBLISHED_URL, freeDrive: runIsFreeDrive,
     },
   });
 }
@@ -336,7 +345,7 @@ let activeScenarioKey = null;
  * recorded as "abandoned" rather than silently dropped or counted as a
  * failure. Excluded from success rates (scoreboard.js's aggregate()). */
 function recordAbandonedIfActive() {
-  if (!mission || mission.status !== "active" || !terrain) return;
+  if (!mission || mission.status !== "active" || !terrain || runIsFreeDrive) return; // free drive runs are never recorded
   const timeSec = simTime - (mission.startSimTime ?? simTime);
   const copilotOn = LEVELS[currentLevelKey].mode === "plan" && guardrails.hazardMode === "reroute";
   scoreboardData = recordRun(scoreboardData, currentLevelKey, {
@@ -352,7 +361,8 @@ function beginRun(scenarioKey) {
   const runGen = runEpochGuard.next(); // invalidates any dry run still in flight from the run this replaces (review finding 1)
   const level = LEVELS[currentLevelKey];
   activeScenarioKey = scenarioKey ?? null;
-  const delaySec = resolveDelaySec(level, terrain.meta, scenarioKey);
+  runIsFreeDrive = freeDriveApplies(level, freeDrive);
+  const delaySec = runDelaySec(resolveDelaySec(level, terrain.meta, scenarioKey), runIsFreeDrive);
 
   hud.hideBrief();
   hud.hideEndCard();
@@ -437,9 +447,17 @@ function beginRun(scenarioKey) {
     });
   } else {
     hud.hidePlanning();
-    hud.setStatusLine("Drive live: WASD or arrow keys.");
+    hud.setStatusLine(runIsFreeDrive ? "Free drive: WASD or arrow keys, no delay." : "Drive live: WASD or arrow keys.");
     const relayLabel = resolveDelayLabel(level, terrain.meta);
-    if (relayLabel) {
+    if (el.controlsHelp) {
+      el.controlsHelp.textContent = runIsFreeDrive
+        ? "WASD or arrow keys to drive. Drag to look around. Free drive: what you see is live, which real rovers never get."
+        : "WASD or arrow keys to drive. Drag to look around. Everything you see is telemetry from the past.";
+    }
+    if (runIsFreeDrive) {
+      el.delayNote.hidden = false;
+      el.delayNote.textContent = FREE_DRIVE_NOTE;
+    } else if (relayLabel) {
       el.delayNote.hidden = false;
       el.delayNote.textContent = `Relay path: ${relayLabel}. About ${delaySec.toFixed(2)} s one way (approximate model).`;
     } else {
@@ -523,6 +541,13 @@ async function loadLevel(key, opts = {}) {
   for (const btn of document.querySelectorAll(".level-btn")) {
     btn.setAttribute("aria-pressed", String(btn.dataset.level === key));
   }
+  if (el.freeDriveToggle) {
+    // Mars stays realistic: its plan-and-trust loop is the delay.
+    el.freeDriveToggle.disabled = level.mode !== "live";
+    el.freeDriveToggle.closest("label").title = level.mode === "live"
+      ? "Removes the signal delay on Moon levels. Not realistic; runs are not counted."
+      : "Mars always uses the real (compressed) delay.";
+  }
 
   api.ready = true;
   startLoop(); // H4: single-loop guaranteed even if this races another loadLevel/visibilitychange resume
@@ -532,6 +557,13 @@ async function loadLevel(key, opts = {}) {
     beginRun(scenarios?.length ? scenarios[0].key : undefined);
   }
 }
+
+el.freeDriveToggle?.addEventListener("change", () => {
+  freeDrive = el.freeDriveToggle.checked;
+  el.freeDriveToggle.blur(); // keep WASD going to the game, not the checkbox
+  // Restart a live run so the new delay applies from the start (a realistic run in progress is recorded as abandoned).
+  if (signal && LEVELS[currentLevelKey].mode === "live") beginRun(activeScenarioKey);
+});
 
 controls = wireControls({
   sendCommand,

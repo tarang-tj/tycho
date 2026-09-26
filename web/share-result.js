@@ -22,11 +22,13 @@ function formatMinSec(timeSec) {
  *   "TYCHO · Lunokhod · arrived in 3:12 · delay 1.28 s · co-pilot off · https://tarang-tj.github.io/tycho/"
  * Separator is a middle dot, not an em dash.
  */
-export function formatShareResult({ levelLabel, outcome, timeSec, delaySec, copilotOn, url }) {
+export function formatShareResult({ levelLabel, outcome, timeSec, delaySec, copilotOn, url, freeDrive = false }) {
   const outcomeWord = OUTCOME_WORDS[outcome] ?? "ended after";
   const delayText = delaySec == null ? "n/a" : `${delaySec.toFixed(2)} s`;
   const copilotText = copilotOn ? "on" : "off";
-  return `TYCHO · ${levelLabel} · ${outcomeWord} ${formatMinSec(timeSec)} · delay ${delayText} · co-pilot ${copilotText} · ${url}`;
+  // Free drive (free-drive.js) replaces the delay field so a no-delay run can never pass as a real one.
+  const delayPart = freeDrive ? "free drive, no delay (not realistic)" : `delay ${delayText}`;
+  return `TYCHO · ${levelLabel} · ${outcomeWord} ${formatMinSec(timeSec)} · ${delayPart} · co-pilot ${copilotText} · ${url}`;
 }
 
 // Plain-ASCII glyph per leg outcome (web/sol-sim.js's `legOutcomes`: one of
