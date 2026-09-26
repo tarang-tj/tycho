@@ -159,12 +159,16 @@ export function createHud(hostEl) {
 
       const tracksCanvas = document.createElement("canvas");
       tracksCanvas.className = "mission-endcard-tracks";
-      // Internal resolution higher than the CSS display size (styles.css
-      // caps it at 220px) so the fitted view/inset/labels stay legible.
-      tracksCanvas.width = 260;
-      tracksCanvas.height = 260;
+      // Backing resolution = CSS display size (styles.css caps it at 220px)
+      // x devicePixelRatio (W2-X3 review finding 4), so text stays crisp on
+      // a phone's high-DPR screen instead of a fixed 260px buffer that only
+      // ever happened to be sharper than 220 CSS px on a DPR-1 display.
+      const dpr = window.devicePixelRatio || 1;
+      const TRACKS_CSS_SIZE = 220;
+      tracksCanvas.width = Math.round(TRACKS_CSS_SIZE * dpr);
+      tracksCanvas.height = Math.round(TRACKS_CSS_SIZE * dpr);
       endcard.appendChild(tracksCanvas);
-      drawTracks(tracksCanvas, marsDrift.terrain, marsDrift.truePath, marsDrift.believedPath, marsDrift.offsetM);
+      drawTracks(tracksCanvas, marsDrift.terrain, marsDrift.truePath, marsDrift.believedPath, marsDrift.offsetM, dpr);
 
       const legend = document.createElement("p");
       legend.className = "mission-endcard-line mission-tracks-legend";

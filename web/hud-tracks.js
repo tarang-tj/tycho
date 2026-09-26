@@ -3,69 +3,19 @@
 // drawMinimap uses) - review finding 2. Split out of hud-minimap.js (that
 // module keeps the planning minimap; this one is end-of-run only) to stay
 // under the file-size guideline. No three.js dependency.
-const MIN_EXTENT_PX = 20; // floor so a near-zero-length drive still gets a sane view
-const PADDING_FACTOR = 3; // main view extent = max(bbox span, 2x endpoint gap) * this
-const INSET_TRIGGER_FRACTION = 0.15; // add a zoomed inset once the endpoint gap reads as less than this fraction of the main canvas
-const INSET_SIZE_FRACTION = 0.42; // inset box side, as a fraction of the main canvas
-const INSET_PADDING_FACTOR = 4; // inset view extent = endpoint gap * this factor
+//
+// The pure fit/inset-placement math lives in hud-tracks-fit.js (W2-X3 review
+// finding 5) so it stays unit-testable without a <canvas>; re-exported here
+// so existing importers (hud.js, tests/hud-tracks.test.mjs) don't need to
+// know about the split.
+import { computeTrackFit, niceScaleNumber, insetScreenRect } from "./hud-tracks-fit.js";
 
-const TRUE_COLOR = "#ffffff";
+export { computeTrackFit };
+
+export const TRUE_COLOR = "#ffffff";
 // Away from #f4c06a (the planning minimap's waypoint color) - review finding 2.
-const BELIEVED_COLOR = "#ff5ec4";
+export const BELIEVED_COLOR = "#ff5ec4";
 const OFFSET_COLOR = "#ffe066";
-
-function unionBounds(points) {
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const p of points) {
-    if (p.x < minX) minX = p.x;
-    if (p.x > maxX) maxX = p.x;
-    if (p.y < minY) minY = p.y;
-    if (p.y > maxY) maxY = p.y;
-  }
-  return { minX, minY, maxX, maxY };
-}
-
-/**
- * Pure (no canvas) fit math, unit-testable directly: the union bounding box
- * of both tracks, padded and floored to a minimum extent, plus whether the
- * two final points are still too close together at that zoom to read as
- * distinct - in which case the caller should also draw a zoomed inset.
- */
-export function computeTrackFit(truePath = [], believedPath = []) {
-  const allPoints = [...truePath, ...believedPath];
-  const trueEnd = truePath.length ? truePath[truePath.length - 1] : null;
-  const believedEnd = believedPath.length ? believedPath[believedPath.length - 1] : null;
-  const endpointGapPx = trueEnd && believedEnd ? Math.hypot(believedEnd.x - trueEnd.x, believedEnd.y - trueEnd.y) : 0;
-
-  const bbox = allPoints.length ? unionBounds(allPoints) : { minX: 0, minY: 0, maxX: 0, maxY: 0 };
-  const bboxSpan = Math.max(bbox.maxX - bbox.minX, bbox.maxY - bbox.minY);
-  const extentPx = Math.max(bboxSpan, endpointGapPx * 2, MIN_EXTENT_PX / PADDING_FACTOR) * PADDING_FACTOR;
-  const centerX = (bbox.minX + bbox.maxX) / 2;
-  const centerY = (bbox.minY + bbox.maxY) / 2;
-
-  // endpointGapPx > 0 excludes a true zero-drift run (nothing to zoom into).
-  const needsInset = !!(trueEnd && believedEnd) && endpointGapPx > 0 && endpointGapPx / extentPx < INSET_TRIGGER_FRACTION;
-  let inset = null;
-  if (needsInset) {
-    const insetExtentPx = Math.max(endpointGapPx * INSET_PADDING_FACTOR, MIN_EXTENT_PX / 4);
-    inset = {
-      viewMinX: (trueEnd.x + believedEnd.x) / 2 - insetExtentPx / 2,
-      viewMinY: (trueEnd.y + believedEnd.y) / 2 - insetExtentPx / 2,
-      extentPx: insetExtentPx,
-      zoomFactor: extentPx / insetExtentPx,
-    };
-  }
-
-  return { viewMinX: centerX - extentPx / 2, viewMinY: centerY - extentPx / 2, extentPx, trueEnd, believedEnd, endpointGapPx, inset };
-}
-
-function niceScaleNumber(x) {
-  if (!(x > 0)) return 1;
-  const exp = Math.floor(Math.log10(x));
-  const base = x / 10 ** exp;
-  const nice = base < 1.5 ? 1 : base < 3.5 ? 2 : base < 7.5 ? 5 : 10;
-  return nice * 10 ** exp;
-}
 
 function renderElevationBackground(ctx, terrain, viewMinX, viewMinY, extentPx, rect) {
   const grid = 32;
@@ -153,13 +103,13 @@ function drawScaleBar(ctx, terrain, extentPx, rect) {
   ctx.moveTo(x0 + barPx, y0 - 3);
   ctx.lineTo(x0 + barPx, y0 + 3);
   ctx.stroke();
-  ctx.font = "9px sans-serif";
+  ctx.font = "12px sans-serif";
   ctx.fillStyle = "#ffffff";
   ctx.fillText(`${barM} m`, x0, y0 - 5);
   ctx.restore();
 }
 
-function drawOffsetLabel(ctx, toCanvas, fit, offsetM) {
+function drawOffsetLabel(ctx, toCanvas, fit, offsetM, fontPx = 12) {
   const [tx, ty] = toCanvas(fit.trueEnd.x, fit.trueEnd.y);
   const [bx, by] = toCanvas(fit.believedEnd.x, fit.believedEnd.y);
   ctx.save();
@@ -172,27 +122,37 @@ function drawOffsetLabel(ctx, toCanvas, fit, offsetM) {
   ctx.stroke();
   ctx.setLineDash([]);
   const magnitudeM = Math.round(Math.hypot(offsetM.x, offsetM.y));
-  ctx.font = "10px sans-serif";
+  ctx.font = `${fontPx}px sans-serif`;
   ctx.fillStyle = OFFSET_COLOR;
   ctx.fillText(`${magnitudeM} m`, (tx + bx) / 2 + 4, (ty + by) / 2 - 4);
   ctx.restore();
 }
 
-function drawInset(ctx, terrain, truePath, believedPath, fit, canvasW, canvasH) {
-  const size = canvasW * INSET_SIZE_FRACTION;
-  const rect = { x: canvasW - size - 4, y: canvasH - size - 14, w: size, h: size };
+/**
+ * The inset box (W2-X3 review finding 2: placed in the corner OPPOSITE the
+ * run's own endpoints, via hud-tracks-fit.js's `pickInsetCorner`, instead of
+ * always bottom-right - a SE-bound drive used to hide its endpoints, offset
+ * segment and only meters label under a fixed inset). Draws the offset
+ * segment and its own meters label INSIDE the inset too, since that's the
+ * only place the gap is actually visible once it triggers an inset at all.
+ */
+function drawInset(ctx, terrain, truePath, believedPath, fit, cssW, cssH, offsetM) {
+  const rect = insetScreenRect(fit.inset.corner, cssW, cssH);
+  const isNorth = fit.inset.corner[0] === "n";
+  const labelStripY = isNorth ? rect.y - 14 : rect.y + rect.h;
   ctx.save();
   ctx.fillStyle = "rgba(0,0,0,0.55)";
-  ctx.fillRect(rect.x - 2, rect.y - 12, rect.w + 4, rect.h + 14);
+  ctx.fillRect(rect.x - 2, labelStripY, rect.w + 4, rect.h + 14);
   ctx.restore();
-  drawViewport(ctx, terrain, truePath, believedPath, fit.inset, rect);
+  const insetToCanvas = drawViewport(ctx, terrain, truePath, believedPath, fit.inset, rect);
+  if (fit.trueEnd && fit.believedEnd) drawOffsetLabel(ctx, insetToCanvas, fit, offsetM, 10);
   ctx.save();
   ctx.strokeStyle = "#ffffff";
   ctx.lineWidth = 1;
   ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
-  ctx.font = "9px sans-serif";
+  ctx.font = "11px sans-serif";
   ctx.fillStyle = "#ffffff";
-  ctx.fillText(`zoom ${fit.inset.zoomFactor.toFixed(0)}x`, rect.x, rect.y - 3);
+  ctx.fillText(`zoom ${fit.inset.zoomFactor.toFixed(0)}x`, rect.x, isNorth ? rect.y - 3 : rect.y + rect.h + 11);
   ctx.restore();
 }
 
@@ -206,14 +166,24 @@ function drawInset(ctx, terrain, truePath, believedPath, fit, canvasW, canvasH) 
  * zoom factor rather than silently exaggerating the main view.
  * Called ONLY at mission end (main.js's handleMissionTransition, via
  * hud.js's showEndCard) - never while driving.
+ *
+ * `canvas.width`/`height` are the BACKING pixel resolution (CSS size x
+ * devicePixelRatio, set by the caller - W2-X3 review finding 4, so labels
+ * stay crisp on high-DPR phones); every layout/font-size number below is in
+ * CSS px, via a single `ctx.scale(dpr, dpr)` up front.
  */
-export function drawTracks(canvas, terrain, truePath = [], believedPath = [], offsetM = { x: 0, y: 0 }) {
+export function drawTracks(canvas, terrain, truePath = [], believedPath = [], offsetM = { x: 0, y: 0 }, dpr = (typeof window !== "undefined" && window.devicePixelRatio) || 1) {
   const ctx = canvas.getContext("2d");
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const cssW = canvas.width / dpr;
+  const cssH = canvas.height / dpr;
+  ctx.save();
+  ctx.scale(dpr, dpr);
   const fit = computeTrackFit(truePath, believedPath);
-  const mainRect = { x: 0, y: 0, w: canvas.width, h: canvas.height };
+  const mainRect = { x: 0, y: 0, w: cssW, h: cssH };
   const toCanvas = drawViewport(ctx, terrain, truePath, believedPath, fit, mainRect);
   drawScaleBar(ctx, terrain, fit.extentPx, mainRect);
   if (fit.trueEnd && fit.believedEnd) drawOffsetLabel(ctx, toCanvas, fit, offsetM);
-  if (fit.inset) drawInset(ctx, terrain, truePath, believedPath, fit, canvas.width, canvas.height);
+  if (fit.inset) drawInset(ctx, terrain, truePath, believedPath, fit, cssW, cssH, offsetM);
+  ctx.restore();
 }

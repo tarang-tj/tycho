@@ -403,38 +403,123 @@ try {
     assert.match(driftText, /Drift this run: the co-pilot thought TYCHO was \d+ m from where it really was\./, `drift reveal line missing/malformed at mission end: "${driftText}"`);
     assert.match(driftText, /Modeled drift: about 1% of distance \(a game assumption, not a measured rover figure\)/, `drift reveal line is missing the ALWAYS-present drift label: "${driftText}"`);
 
-    // Review finding 2: the tracks canvas must actually RENDER both track
-    // colors after a real drive, not just exist at some size - counts exact
-    // pixel matches for the true (white) and believed (hud-tracks.js's
-    // BELIEVED_COLOR, #ff5ec4) track colors via an offscreen copy of the canvas.
-    const trackPixelCounts = await driftPage.evaluate(() => {
+    // Review finding 1 (W2-X3): the old whole-canvas color-count assertion
+    // was vacuous - it survived removing EITHER track's drawPath entirely,
+    // because the endpoint markers, scale bar, "zoom Nx" text and inset
+    // border already paint more than 5 matching pixels on their own. Instead,
+    // re-derive hud-tracks.js's OWN fitted view (computeTrackFit) from the
+    // real truePath/believedPath the end card actually drew (main.js's
+    // getLastMarsDrift), map each track's MIDPOINT (deliberately away from
+    // the endpoints/markers and the inset, per the finding's suggested fix)
+    // to canvas coordinates, and require that track's color in a small
+    // neighborhood there - so removing either drawPath call has nowhere to
+    // hide.
+    const trackSample = await driftPage.evaluate(async () => {
+      const { computeTrackFit } = await import("/web/hud-tracks-fit.js");
+      const marsDrift = window.TYCHO.debug.getLastMarsDrift();
       const canvas = document.querySelector(".mission-endcard-tracks");
-      if (!canvas) return null;
+      if (!canvas || !marsDrift) return null;
       const off = document.createElement("canvas");
       off.width = canvas.width;
       off.height = canvas.height;
       const ctx = off.getContext("2d");
       ctx.drawImage(canvas, 0, 0);
       const { data } = ctx.getImageData(0, 0, off.width, off.height);
-      let white = 0, believed = 0;
-      for (let i = 0; i < data.length; i += 4) {
-        const [r, g, b] = [data[i], data[i + 1], data[i + 2]];
-        if (r === 255 && g === 255 && b === 255) white += 1;
-        else if (r === 255 && g === 94 && b === 196) believed += 1; // hud-tracks.js BELIEVED_COLOR #ff5ec4
-      }
-      return { width: canvas.width, white, believed };
+      const pixelAt = (x, y) => {
+        const i = (Math.round(y) * off.width + Math.round(x)) * 4;
+        return [data[i], data[i + 1], data[i + 2]];
+      };
+      const matches = (x, y, [r, g, b], radius) => {
+        for (let dy = -radius; dy <= radius; dy++) {
+          for (let dx = -radius; dx <= radius; dx++) {
+            const px = Math.round(x) + dx, py = Math.round(y) + dy;
+            if (px < 0 || py < 0 || px >= off.width || py >= off.height) continue;
+            const [pr, pg, pb] = pixelAt(px, py);
+            if (pr === r && pg === g && pb === b) return true;
+          }
+        }
+        return false;
+      };
+      const dpr = window.devicePixelRatio || 1;
+      const cssW = canvas.width / dpr, cssH = canvas.height / dpr;
+      const fit = computeTrackFit(marsDrift.truePath, marsDrift.believedPath);
+      const toBackingPx = (px, py) => [
+        ((px - fit.viewMinX) / fit.extentPx) * cssW * dpr,
+        ((py - fit.viewMinY) / fit.extentPx) * cssH * dpr,
+      ];
+      const midpointOf = (path) => path[Math.floor(path.length / 2)];
+      const radius = Math.max(3, Math.ceil(6 * dpr)); // covers stroke width, AA and dash gaps without reaching the endpoint markers/inset
+      const trueMid = midpointOf(marsDrift.truePath);
+      const believedMid = midpointOf(marsDrift.believedPath);
+      const [tx, ty] = toBackingPx(trueMid.x, trueMid.y);
+      const [bx, by] = toBackingPx(believedMid.x, believedMid.y);
+      return {
+        pathLengths: [marsDrift.truePath.length, marsDrift.believedPath.length],
+        trueMatch: matches(tx, ty, [255, 255, 255], radius),
+        believedMatch: matches(bx, by, [255, 94, 196], radius), // hud-tracks.js BELIEVED_COLOR #ff5ec4
+      };
     });
-    assert.ok(trackPixelCounts?.width > 0, "the believed/true tracks canvas is missing from the end card at mission end");
-    assert.ok(trackPixelCounts.white > 5, `true track (white) is not actually rendered: only ${trackPixelCounts.white} matching pixels`);
-    assert.ok(trackPixelCounts.believed > 5, `believed track is not actually rendered: only ${trackPixelCounts.believed} matching pixels`);
-    console.log(`Mars: drift reveal shown at mission end - "${driftText}" (tracks canvas: ${trackPixelCounts.white} true-track px, ${trackPixelCounts.believed} believed-track px).`);
+    assert.ok(trackSample, "the believed/true tracks canvas or its finalized track data is missing from the end card at mission end");
+    assert.ok(trackSample.pathLengths[0] >= 3 && trackSample.pathLengths[1] >= 3, `too few sampled points to trust a midpoint-away-from-endpoints check: ${trackSample.pathLengths}`);
+    assert.ok(trackSample.trueMatch, "true track (white) is not actually rendered at its own midpoint - the drawPath call for it may be missing");
+    assert.ok(trackSample.believedMatch, "believed track (magenta) is not actually rendered at its own midpoint - the drawPath call for it may be missing");
+    console.log(`Mars: drift reveal shown at mission end - "${driftText}" (both tracks confirmed rendered at their own midpoints, ${trackSample.pathLengths[0]} true / ${trackSample.pathLengths[1]} believed sampled points).`);
+
+    // Review finding 2 (W2-X3): a SE-bound drive used to hide its endpoints,
+    // offset segment and the only meters label under a fixed bottom-right
+    // inset. Renders hud-tracks.js's real drawTracks (not a re-implementation)
+    // directly against a synthetic SE-bound and a mirrored NW-bound track
+    // pair, on the same page (no new mission drive needed - this is pure
+    // render logic), and confirms both the inset corner flips AND the offset
+    // segment/label (OFFSET_COLOR #ffe066) actually lands inside that inset.
+    const insetPlacement = await driftPage.evaluate(async () => {
+      const { drawTracks } = await import("/web/hud-tracks.js");
+      const { computeTrackFit, insetScreenRect } = await import("/web/hud-tracks-fit.js");
+      const terrain = { metersPerPixel: 20, elev: () => 0 };
+      const cases = {
+        se: {
+          truePath: [{ x: 500, y: 500 }, { x: 515, y: 515 }, { x: 530, y: 530 }],
+          believedPath: [{ x: 500, y: 500 }, { x: 515.3, y: 515 }, { x: 530.6, y: 530 }],
+        },
+        nw: {
+          truePath: [{ x: 500, y: 500 }, { x: 485, y: 485 }, { x: 470, y: 470 }],
+          believedPath: [{ x: 500, y: 500 }, { x: 484.7, y: 485 }, { x: 469.4, y: 470 }],
+        },
+      };
+      const results = {};
+      for (const [key, { truePath, believedPath }] of Object.entries(cases)) {
+        const canvas = document.createElement("canvas");
+        canvas.width = 220;
+        canvas.height = 220;
+        drawTracks(canvas, terrain, truePath, believedPath, { x: 12, y: 0 }, 1); // dpr=1: deterministic backing==CSS pixels for this synthetic check
+        const { data } = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height);
+        const fit = computeTrackFit(truePath, believedPath);
+        const rect = insetScreenRect(fit.inset.corner, canvas.width, canvas.height);
+        let offsetPxInInset = 0;
+        for (let y = Math.max(0, Math.floor(rect.y)); y < Math.min(canvas.height, Math.ceil(rect.y + rect.h)); y++) {
+          for (let x = Math.max(0, Math.floor(rect.x)); x < Math.min(canvas.width, Math.ceil(rect.x + rect.w)); x++) {
+            const i = (y * canvas.width + x) * 4;
+            if (data[i] === 255 && data[i + 1] === 224 && data[i + 2] === 102) offsetPxInInset++; // OFFSET_COLOR #ffe066
+          }
+        }
+        results[key] = { corner: fit.inset.corner, offsetPxInInset };
+      }
+      return results;
+    });
+    assert.equal(insetPlacement.se.corner, "nw", `SE-bound drive expected the opposite (nw) inset, got ${insetPlacement.se.corner}`);
+    assert.equal(insetPlacement.nw.corner, "se", `NW-bound drive expected the opposite (se) inset, got ${insetPlacement.nw.corner}`);
+    assert.ok(insetPlacement.se.offsetPxInInset > 0, "SE-bound drive: no offset-label/segment pixels found inside its own inset - the meters gap is not actually visible there");
+    assert.ok(insetPlacement.nw.offsetPxInInset > 0, "NW-bound drive: no offset-label/segment pixels found inside its own inset");
+    console.log(`Inset placement: SE-bound -> ${insetPlacement.se.corner} inset (${insetPlacement.se.offsetPxInInset} offset-label px inside it), NW-bound -> ${insetPlacement.nw.corner} inset (${insetPlacement.nw.offsetPxInInset} offset-label px inside it).`);
 
     await driftPage.evaluate(() => window.TYCHO.debug.startMission("close")); // retry
     const afterRetry = await driftPage.evaluate(() => ({
       endcardHidden: document.querySelector(".mission-endcard")?.hidden,
       marsTrackReveal: window.TYCHO.debug.getMarsTrackReveal(),
+      lastMarsDrift: window.TYCHO.debug.getLastMarsDrift(),
     }));
     assert.equal(afterRetry.endcardHidden, true, "the previous run's drift reveal remained visible after retrying (present-time leak into the next run)");
+    assert.equal(afterRetry.lastMarsDrift, null, "the previous run's finalized tracks (getLastMarsDrift) were not reset on retry");
     // Review finding 4: marsTrackReveal itself must be reset on every fresh
     // run, not just hidden by the DOM - otherwise a future terminal status
     // reached without a plan ever being delivered could show the PREVIOUS

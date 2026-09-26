@@ -54,6 +54,7 @@ let guardrails = { ...DEFAULT_GUARDRAILS };
 let autopilot = null; // { path: [{x,y}], index, holdReason } - TRUE (present) state, on the rover
 let marsDriftModel = null; // seeded drift model for the REAL Mars run (mars-run.js's pickRealRunSeed), null off Mars
 let marsTrackReveal = null; // mars-run.js's createMarsTrackReveal(): samples the real run's true/believed tracks; ONLY read at mission end (present-time rule), null off Mars/before a plan is delivered
+let lastMarsDrift = null; // the finalized { truePath, believedPath, offsetM, terrain } drawn on the CURRENT end card, for a boot probe to independently re-derive hud-tracks.js's fitted view against (W2-X3 review finding 1) - reset alongside marsTrackReveal, never read before finalize() already ran
 let plannedWaypoints = []; // the sol plan as uplinked, kept separate from the live autopilot path
 let scoreboardData = loadScoreboard();
 let runMaxSlopeDeg = 0; // this run's peak slope, for objectives.js's slope objective
@@ -107,6 +108,13 @@ const api = {
     // on every fresh run (beginRun/resetRun), not just left over from
     // whatever Mars run last created one (mutation (c) in the W2-X review).
     getMarsTrackReveal: () => marsTrackReveal,
+    // Review finding 1 (W2-X3): the finalized tracks actually drawn on the
+    // current end card, so a boot probe can independently re-derive
+    // hud-tracks.js's own fitted view and assert real track pixels at
+    // specific world coordinates - not just count colors over the whole
+    // canvas, which a missing track survives (markers/scale bar/labels
+    // already produce enough matching pixels on their own).
+    getLastMarsDrift: () => lastMarsDrift,
     sampleSlope(x, y) { return terrain?.slopeDeg(x, y) ?? null; },
     getDelaySec: () => signal?.oneWayDelaySec ?? null,
     // H4: exposed so a Playwright/manual probe can confirm repeated fast
@@ -161,6 +169,7 @@ function handleMissionTransition() {
   const marsDrift = currentLevelKey === "mars" && marsTrackReveal
     ? { ...marsTrackReveal.finalize(marsDriftModel, trueState, terrain), terrain }
     : null;
+  lastMarsDrift = marsDrift;
   scoreboardData = recordRun(scoreboardData, currentLevelKey, {
     outcome: mission.outcome, timeSec, distanceM: mission.distanceTraveledM, copilotOn,
     predictedArrival: plannedPrediction?.arrivalRate, medals,
@@ -358,6 +367,7 @@ function beginRun(scenarioKey) {
   autopilot = null;
   marsDriftModel = null;
   marsTrackReveal = null;
+  lastMarsDrift = null;
   runMaxSlopeDeg = 0;
   lastDryRunSummary = null;
   lastDryRunSignature = null;
@@ -448,6 +458,7 @@ function resetRun() {
   autopilot = null;
   marsDriftModel = null;
   marsTrackReveal = null;
+  lastMarsDrift = null;
   plannedWaypoints = [];
   pendingDownPulses = [];
 }
