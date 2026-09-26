@@ -119,6 +119,9 @@ button { font: inherit; color: inherit; }
 .mission-objective.met { color: var(--accent); }
 .mission-objective.unmet { color: var(--muted); }
 .mission-endcard-predicted { font-family: var(--mono); font-size: 0.8rem; color: var(--muted); }
+.mission-endcard-drift { font-family: var(--mono); font-size: 0.8rem; color: var(--muted); }
+.mission-endcard-tracks { display: block; width: 100%; max-width: 220px; height: auto; aspect-ratio: 1; border: 1px solid var(--line-strong); border-radius: 4px; margin: 0.4rem 0; }
+.mission-tracks-legend { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); }
 
 /* Title screen over the live scene. */
 .title-screen {

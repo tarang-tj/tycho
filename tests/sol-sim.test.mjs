@@ -12,7 +12,7 @@ import { createSignalLink } from "../web/signal.js";
 import { planRoute, DEFAULT_GUARDRAILS } from "../web/copilot.js";
 import { createMission, startMission, updateMission } from "../web/mission.js";
 import { MARS_SCENARIOS } from "../web/levels.js";
-import { autopilotStep, runSolPlan } from "../web/sol-sim.js";
+import { autopilotStep, runSolPlan, createPathSampler } from "../web/sol-sim.js";
 
 const ASSETS_ROOT = fileURLToPath(new URL("../assets/", import.meta.url));
 const WAYPOINT_ARRIVE_RADIUS_M = 6;
@@ -198,3 +198,20 @@ for (const scenario of MARS_SCENARIOS) {
     assert.ok(deltaM <= 1, `distance mismatch for ${scenario.key}: runSolPlan=${result.distanceM.toFixed(2)}m reference=${reference.distanceM.toFixed(2)}m (delta ${deltaM.toFixed(2)}m)`);
   });
 }
+
+// --- createPathSampler ------------------------------------------------------
+
+test("createPathSampler: samples immediately at simTime=0, then only every intervalS seconds", () => {
+  const sampler = createPathSampler(5);
+  sampler.sample(0, { x: 0, y: 0 }, { x: 0.1, y: 0.1 });
+  sampler.sample(2, { x: 1, y: 0 }, { x: 1.1, y: 0.1 }); // too soon, dropped
+  sampler.sample(5, { x: 2, y: 0 }, { x: 2.1, y: 0.1 });
+  assert.deepEqual(sampler.truePath, [{ x: 0, y: 0 }, { x: 2, y: 0 }]);
+  assert.deepEqual(sampler.believedPath, [{ x: 0.1, y: 0.1 }, { x: 2.1, y: 0.1 }]);
+});
+
+test("createPathSampler: an empty drive (no sample() calls) yields empty paths, not undefined", () => {
+  const sampler = createPathSampler();
+  assert.deepEqual(sampler.truePath, []);
+  assert.deepEqual(sampler.believedPath, []);
+});

@@ -294,6 +294,56 @@ try {
   console.log("Mars: co-pilot HOLD reached the player as mission.status === 'held'.");
 
   // ---------------------------------------------------------------------
+  // Flight Rules drift reveal (present-time rule, spec 3-Lane-3 acceptance
+  // (3)): the believed-vs-true track and the "Drift this run" line must be
+  // absent while the rover is still driving, appear ONLY once the mission
+  // reaches a terminal status, and never linger into the next run.
+  // ---------------------------------------------------------------------
+  // Same technique as the co-pilot HOLD proof above (a 1 deg slope limit the
+  // spawn-area terrain cannot possibly satisfy): a fast, reliable route to a
+  // terminal mission status, so this probe doesn't have to wait out a real
+  // multi-minute drive to the actual level goal.
+  await page.evaluate(() => window.TYCHO.debug.startMission("close")); // fresh run
+  await page.evaluate(() => window.TYCHO.debug.setGuardrails({ maxSlopeDeg: 1, hazardMode: "stop", maxAutonomousDistanceM: 50000, lookaheadRadiusM: 50 }));
+  const driftTarget = { x: spawnMeta.x + 50, y: spawnMeta.y + 50 };
+  await page.evaluate((wp) => window.TYCHO.debug.uplinkPlan([wp]), driftTarget);
+
+  // Mid-flight, before the plan has even been delivered (still driving in
+  // the sense that the mission is "active" and no terminal reveal has
+  // happened yet): the drift reveal must not be visible.
+  await page.waitForTimeout(Math.max(0, marsDelaySec * 1000 - 3000));
+  // isVisible() (not a bare existence check): a PREVIOUS run's end card can
+  // still hold a stale `.mission-endcard-drift` element in the DOM while
+  // hidden (innerHTML is only rebuilt on the NEXT showEndCard() call) - only
+  // actual visibility proves nothing leaked into this run's present time.
+  const driftLineVisible = await page.locator(".mission-endcard-drift").isVisible();
+  const tracksVisible = await page.locator(".mission-endcard-tracks").isVisible();
+  assert.equal(driftLineVisible, false, "the drift line leaked present time: visible WHILE the rover was still driving");
+  assert.equal(tracksVisible, false, "the believed/true tracks leaked present time: visible WHILE the rover was still driving");
+  console.log("Mars: drift reveal correctly absent while driving.");
+
+  await waitUntil(async () => {
+    const m = await page.evaluate(() => window.TYCHO.debug.getMission());
+    return ["won", "tipped", "stalled", "held"].includes(m.status);
+  }, marsDelaySec * 1000 + 5000, "drift-reveal probe: Mars run never reached a terminal status");
+
+  await page.waitForSelector(".mission-endcard-drift", { state: "visible", timeout: 5000 });
+  const driftText = await page.evaluate(() => document.querySelector(".mission-endcard-drift").textContent);
+  assert.match(driftText, /Drift this run: the co-pilot thought TYCHO was \d+ m from where it really was\./, `drift reveal line missing/malformed at mission end: "${driftText}"`);
+  assert.match(driftText, /Modeled drift: about 1% of distance \(a game assumption, not a measured rover figure\)/, `drift reveal line is missing the ALWAYS-present drift label: "${driftText}"`);
+  const tracksCanvasSize = await page.evaluate(() => {
+    const canvas = document.querySelector(".mission-endcard-tracks");
+    return canvas ? { width: canvas.width, height: canvas.height } : null;
+  });
+  assert.ok(tracksCanvasSize?.width > 0, "the believed/true tracks canvas is missing from the end card at mission end");
+  console.log(`Mars: drift reveal shown at mission end - "${driftText}"`);
+
+  await page.evaluate(() => window.TYCHO.debug.startMission("close")); // retry
+  const endcardHiddenAfterRetry = await page.evaluate(() => document.querySelector(".mission-endcard")?.hidden);
+  assert.equal(endcardHiddenAfterRetry, true, "the previous run's drift reveal remained visible after retrying (present-time leak into the next run)");
+  console.log("Mars: drift reveal cleared after retry.");
+
+  // ---------------------------------------------------------------------
   // Flight Rules "Dry run": placing a waypoint through the real UI (not the
   // debug API) and pressing Dry run must render N=100 results WITHOUT
   // freezing the render loop - proven here by sampling the frame counter

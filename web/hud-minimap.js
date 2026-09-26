@@ -83,6 +83,36 @@ export function drawMinimap(canvas, terrain, waypoints = [], cursor = null) {
   }
 }
 
+/**
+ * Draw the Flight Rules drift reveal: the same top-down terrain/spawn/goal
+ * background as `drawMinimap` (no waypoints/cursor), with the real Mars
+ * run's true track (solid white) and believed track (dashed amber) overlaid
+ * in two distinct, labeled styles. Called ONLY at mission end (main.js's
+ * handleMissionTransition, via hud.js's showEndCard) - never while driving.
+ */
+export function drawTracks(canvas, terrain, truePath = [], believedPath = []) {
+  drawMinimap(canvas, terrain, [], null);
+  const ctx = canvas.getContext("2d");
+  const toCanvas = (px, py) => [(px / terrain.width) * canvas.width, (py / terrain.height) * canvas.height];
+  drawTrackLine(ctx, toCanvas, truePath, "#ffffff", []);
+  drawTrackLine(ctx, toCanvas, believedPath, "#f4c06a", [6, 4]);
+}
+
+function drawTrackLine(ctx, toCanvas, path, color, dash) {
+  if (path.length < 2) return;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.setLineDash(dash);
+  ctx.beginPath();
+  path.forEach(({ x, y }, i) => {
+    const [cx, cy] = toCanvas(x, y);
+    if (i === 0) ctx.moveTo(cx, cy); else ctx.lineTo(cx, cy);
+  });
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawMarker(ctx, [x, y], color, label) {
   ctx.fillStyle = color;
   ctx.beginPath();

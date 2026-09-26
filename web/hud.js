@@ -13,6 +13,7 @@ import { renderPlanningPanel } from "./hud-planning.js";
 import { copyResultText } from "./hud-clipboard.js";
 import { formatShareResult, formatLegGrid } from "./share-result.js";
 import { formatPredictedLine, driftLabel } from "./mars-run.js";
+import { drawTracks } from "./hud-minimap.js";
 
 /** Create the mission panel DOM inside `hostEl` (the existing .hud side panel). Returns a handle with render functions. */
 export function createHud(hostEl) {
@@ -105,7 +106,7 @@ export function createHud(hostEl) {
     statusLine.textContent = text ?? "";
   }
 
-  function showEndCard({ outcome, timeSec, distanceM, whatHappened, onRetry, share, objectives, legOutcomes, predicted }) {
+  function showEndCard({ outcome, timeSec, distanceM, whatHappened, onRetry, share, objectives, legOutcomes, predicted, marsDrift }) {
     plan.hidden = true;
     endcard.hidden = false;
     endcard.innerHTML = "";
@@ -144,6 +145,35 @@ export function createHud(hostEl) {
       p.className = "mission-endcard-predicted";
       p.textContent = predictedLine;
       endcard.appendChild(p);
+    }
+
+    // Flight Rules: the drift reveal. ONLY rendered here, at mission end
+    // (marsDrift is only ever passed on a Mars run - main.js's
+    // handleMissionTransition) - never while driving, per the present-time
+    // rule (spec 3-Lane-3 acceptance (3)).
+    if (marsDrift) {
+      const driftP = document.createElement("p");
+      driftP.className = "mission-endcard-line mission-endcard-drift";
+      driftP.textContent = `${marsDrift.driftLine} ${driftLabel()}`;
+      endcard.appendChild(driftP);
+
+      const tracksCanvas = document.createElement("canvas");
+      tracksCanvas.className = "mission-endcard-tracks";
+      tracksCanvas.width = 220;
+      tracksCanvas.height = 220;
+      endcard.appendChild(tracksCanvas);
+      drawTracks(tracksCanvas, marsDrift.terrain, marsDrift.truePath, marsDrift.believedPath);
+
+      const legend = document.createElement("p");
+      legend.className = "mission-endcard-line mission-tracks-legend";
+      legend.textContent = "Solid white: where TYCHO really drove. Dashed amber: where the co-pilot believed it was driving.";
+      endcard.appendChild(legend);
+
+      // The end card can run taller than the panel viewport (same clipping
+      // hud-planning.js's dry-run result panel already handles); scroll the
+      // tracks canvas itself into view (not just the drift line above it),
+      // so the reveal is fully visible without the player hunting for it.
+      tracksCanvas.scrollIntoView?.({ block: "center" });
     }
 
     const actions = document.createElement("div");

@@ -17,7 +17,29 @@ import { createDriftModel, DRIFT_PCT } from "./drift.js";
 
 const WAYPOINT_ARRIVE_RADIUS_M = 6;
 const DEFAULT_MAX_TIME_SEC = 2400;
-const PATH_SAMPLE_INTERVAL_S = 5; // downsample interval for truePath/believedPath output
+export const PATH_SAMPLE_INTERVAL_S = 5; // downsample interval for truePath/believedPath output
+
+/**
+ * Downsample a drive into truePath/believedPath point arrays at
+ * `intervalS`-second intervals, shared by `runSolPlan`'s headless dry run
+ * AND main.js's real Mars run (see mars-run.js's createMarsTrackReveal), so
+ * the two never carry two copies of this bookkeeping.
+ */
+export function createPathSampler(intervalS = PATH_SAMPLE_INTERVAL_S) {
+  let lastSampleAt = -Infinity;
+  const truePath = [];
+  const believedPath = [];
+  return {
+    sample(simTime, trueState, believedState) {
+      if (simTime - lastSampleAt < intervalS) return;
+      lastSampleAt = simTime;
+      truePath.push({ x: trueState.x, y: trueState.y });
+      believedPath.push({ x: believedState.x, y: believedState.y });
+    },
+    truePath,
+    believedPath,
+  };
+}
 
 /**
  * Advance a sol-plan autopilot by one physics tick. Steers the TRUE rover
@@ -165,13 +187,11 @@ export function runSolPlan({ terrain, spawn, waypoints = [], guardrails = {}, se
   const driftModel = createDriftModel({ seed, driftPct });
   let mission = startMission(createMission("sol-sim", { mode: "plan" }), 0);
 
-  const truePath = [];
-  const believedPath = [];
+  const pathSampler = createPathSampler();
   let believedState = { x: trueState.x, y: trueState.y };
   let simTime = 0;
   let maxSlopeDeg = 0;
   let distanceM = 0;
-  let lastSampleAt = -Infinity;
 
   for (; simTime < maxTimeSec && mission.status === "active"; simTime += dt) {
     const step = autopilotStep({ trueState, autopilot, terrain, dt, driftModel });
@@ -188,11 +208,7 @@ export function runSolPlan({ terrain, spawn, waypoints = [], guardrails = {}, se
       telemetryAgeSec: 0,
     });
 
-    if (simTime - lastSampleAt >= PATH_SAMPLE_INTERVAL_S) {
-      lastSampleAt = simTime;
-      truePath.push({ x: trueState.x, y: trueState.y });
-      believedPath.push({ x: believedState.x, y: believedState.y });
-    }
+    pathSampler.sample(simTime, trueState, believedState);
   }
 
   // A run that never reaches a terminal mission status inside maxTimeSec has
@@ -208,7 +224,7 @@ export function runSolPlan({ terrain, spawn, waypoints = [], guardrails = {}, se
     maxSlopeDeg,
     legOutcomes: finalLegOutcomes,
     holdReason: outcome === "held" ? (mission.copilotHoldReason ?? planHoldReason ?? null) : undefined,
-    truePath,
-    believedPath,
+    truePath: pathSampler.truePath,
+    believedPath: pathSampler.believedPath,
   };
 }

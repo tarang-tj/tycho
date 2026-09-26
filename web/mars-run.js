@@ -1,7 +1,7 @@
 // Small UI-lane helpers gluing the Flight Rules dry run and the real Mars
 // run together, split out of main.js to keep it inside its net-line budget.
 // Pure/injectable: no DOM dependency, unit-testable in node.
-import { planLegsWithBoundaries, finalizeLegOutcomes } from "./sol-sim.js";
+import { planLegsWithBoundaries, finalizeLegOutcomes, createPathSampler } from "./sol-sim.js";
 import { DRIFT_PCT } from "./drift.js";
 
 // A dry run always samples the fixed seed range [DRY_RUN_BASE_SEED,
@@ -120,6 +120,43 @@ export function formatPredictedLine(predicted, outcome, driftPct = DRIFT_PCT) {
   const pct = (v) => Math.round(v * 100);
   const range = `${pct(predicted.wilson95[0])}-${pct(predicted.wilson95[1])}%`;
   return `Dry run predicted ${pct(predicted.arrivalRate)}% (range ${range}); this run: ${OUTCOME_WORD[outcome] ?? outcome}. ${driftLabel(driftPct)}`;
+}
+
+/**
+ * Present-time rule for the drift reveal: main.js samples the REAL Mars
+ * run's true/believed positions into this every physics tick while
+ * `autopilot` is active, via sol-sim.js's OWN `createPathSampler` (the same
+ * downsample bookkeeping `runSolPlan` uses for the dry run) - so the drive
+ * loop and its sampling stay single-sourced. `finalize()` is called ONLY at
+ * mission end (main.js's handleMissionTransition); nothing here is readable
+ * before that, since the caller simply never calls `finalize()` early.
+ */
+export function createMarsTrackReveal() {
+  const sampler = createPathSampler();
+  return {
+    sample: sampler.sample,
+    /** @param {{offsetM():{x:number,y:number}}|null} driftModel */
+    finalize(driftModel) {
+      const offsetM = driftModel ? driftModel.offsetM() : { x: 0, y: 0 };
+      return {
+        truePath: sampler.truePath,
+        believedPath: sampler.believedPath,
+        offsetM,
+        driftLine: formatRealDriftLine(offsetM),
+      };
+    },
+  };
+}
+
+/**
+ * The REAL Mars run's end-of-mission drift disclosure, e.g.:
+ *   "Drift this run: the co-pilot thought TYCHO was 14 m from where it really was."
+ * Shown only at mission end (main.js's handleMissionTransition), never
+ * during the run (present-time rule) - see hud.js's showEndCard.
+ */
+export function formatRealDriftLine(offsetM) {
+  const magnitudeM = Math.hypot(offsetM.x, offsetM.y);
+  return `Drift this run: the co-pilot thought TYCHO was ${Math.round(magnitudeM)} m from where it really was.`;
 }
 
 /**

@@ -6,6 +6,7 @@ import {
   DRY_RUN_N, DRY_RUN_BASE_SEED, pickRealRunSeed,
   createMarsAutopilot, finalizeMarsLegOutcomes,
   formatDryRunSummary, formatPredictedLine,
+  formatRealDriftLine, createMarsTrackReveal,
 } from "../web/mars-run.js";
 
 const terrain = createSyntheticTerrain({ seed: 2 });
@@ -120,4 +121,39 @@ test("formatPredictedLine: renders the predicted range, this run's actual outcom
     formatPredictedLine(predicted, "stalled", 1),
     "Dry run predicted 49% (range 39-59%); this run: stalled. Modeled drift: about 1% of distance (a game assumption, not a measured rover figure)",
   );
+});
+
+// --- formatRealDriftLine / createMarsTrackReveal ----------------------------
+
+test("formatRealDriftLine: reports the rounded believed-minus-true offset magnitude", () => {
+  assert.equal(
+    formatRealDriftLine({ x: 12, y: 5 }),
+    "Drift this run: the co-pilot thought TYCHO was 13 m from where it really was.",
+  );
+});
+
+test("formatRealDriftLine: zero offset (no drift model, e.g. driftPct=0) reads as 0 m, not NaN/undefined", () => {
+  assert.equal(
+    formatRealDriftLine({ x: 0, y: 0 }),
+    "Drift this run: the co-pilot thought TYCHO was 0 m from where it really was.",
+  );
+});
+
+test("createMarsTrackReveal: finalize() with no driftModel (e.g. mission ended before a plan was ever delivered) reports zero offset", () => {
+  const reveal = createMarsTrackReveal();
+  const result = reveal.finalize(null);
+  assert.deepEqual(result.offsetM, { x: 0, y: 0 });
+  assert.deepEqual(result.truePath, []);
+  assert.deepEqual(result.believedPath, []);
+});
+
+test("createMarsTrackReveal: sample() feeds the same downsampled truePath/believedPath sol-sim.js's createPathSampler produces", () => {
+  const reveal = createMarsTrackReveal();
+  reveal.sample(0, { x: 0, y: 0 }, { x: 0.2, y: 0 });
+  reveal.sample(5, { x: 1, y: 0 }, { x: 1.2, y: 0 });
+  const fakeDriftModel = { offsetM: () => ({ x: 0.2, y: 0 }) };
+  const result = reveal.finalize(fakeDriftModel);
+  assert.deepEqual(result.truePath, [{ x: 0, y: 0 }, { x: 1, y: 0 }]);
+  assert.deepEqual(result.believedPath, [{ x: 0.2, y: 0 }, { x: 1.2, y: 0 }]);
+  assert.equal(result.driftLine, "Drift this run: the co-pilot thought TYCHO was 0 m from where it really was.");
 });

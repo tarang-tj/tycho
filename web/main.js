@@ -20,7 +20,7 @@ import { autopilotStep } from "./sol-sim.js";
 import { createDriftModel, DRIFT_PCT } from "./drift.js";
 import { runDryRun } from "./dry-run.js";
 import { evaluateObjectives } from "./objectives.js";
-import { createMarsAutopilot, finalizeMarsLegOutcomes, pickRealRunSeed, planSignature, DRY_RUN_N, DRY_RUN_BASE_SEED } from "./mars-run.js";
+import { createMarsAutopilot, finalizeMarsLegOutcomes, pickRealRunSeed, planSignature, DRY_RUN_N, DRY_RUN_BASE_SEED, createMarsTrackReveal } from "./mars-run.js";
 
 const FIXED_DT = 1 / 60;
 const PUBLISHED_URL = "https://tarang-tj.github.io/tycho/";
@@ -53,6 +53,7 @@ let lastMissionStatus = mission.status;
 let guardrails = { ...DEFAULT_GUARDRAILS };
 let autopilot = null; // { path: [{x,y}], index, holdReason } - TRUE (present) state, on the rover
 let marsDriftModel = null; // seeded drift model for the REAL Mars run (mars-run.js's pickRealRunSeed), null off Mars
+let marsTrackReveal = null; // mars-run.js's createMarsTrackReveal(): samples the real run's true/believed tracks; ONLY read at mission end (present-time rule), null off Mars/before a plan is delivered
 let plannedWaypoints = []; // the sol plan as uplinked, kept separate from the live autopilot path
 let scoreboardData = loadScoreboard();
 let runMaxSlopeDeg = 0; // this run's peak slope, for objectives.js's slope objective
@@ -149,6 +150,13 @@ function handleMissionTransition() {
   // saved history can show them later without re-deriving anything.
   const medals = objectives.filter((o) => o.met).map((o) => o.id);
   const legOutcomes = currentLevelKey === "mars" ? finalizeMarsLegOutcomes(autopilot, mission.outcome) : null;
+  // The drift reveal (spec 3-Lane-3 acceptance (3)): finalize() is called
+  // HERE, at mission end, and nowhere else - marsTrackReveal's sampled
+  // tracks and marsDriftModel's accumulated offset are otherwise never read,
+  // so the believed-vs-true gap cannot leak into present time.
+  const marsDrift = currentLevelKey === "mars" && marsTrackReveal
+    ? { ...marsTrackReveal.finalize(marsDriftModel), terrain }
+    : null;
   scoreboardData = recordRun(scoreboardData, currentLevelKey, {
     outcome: mission.outcome, timeSec, distanceM: mission.distanceTraveledM, copilotOn,
     predictedArrival: plannedPrediction?.arrivalRate, medals,
@@ -164,7 +172,7 @@ function handleMissionTransition() {
     outcome: mission.outcome, timeSec, distanceM: mission.distanceTraveledM,
     whatHappened: whatHappenedLine(mission),
     onRetry: () => beginRun(activeScenarioKey),
-    objectives, legOutcomes, predicted: plannedPrediction,
+    objectives, legOutcomes, predicted: plannedPrediction, marsDrift,
     share: {
       levelLabel: LEVELS[currentLevelKey].label, outcome: mission.outcome, timeSec,
       delaySec: averageDelaySec(mission) || signal?.oneWayDelaySec || null,
@@ -183,6 +191,7 @@ function tickPhysics(dt) {
       // (mars-run.js), on a fresh seed the dry run never sampled.
       autopilot = createMarsAutopilot({ x: trueState.x, y: trueState.y }, cmd.waypoints, terrain, guardrails);
       marsDriftModel = createDriftModel({ seed: pickRealRunSeed(), driftPct: DRIFT_PCT });
+      marsTrackReveal = createMarsTrackReveal();
       // No hud.setStatusLine/scene.flashHazard here: those are the rover's
       // own decision, and must reach the player only through telemetry once
       // it becomes visible (see the H1 block below) - firing them here at
@@ -199,6 +208,7 @@ function tickPhysics(dt) {
     const step = autopilotStep({ trueState, autopilot, terrain, dt, driftModel: marsDriftModel });
     trueState = step.trueState;
     autopilot = step.autopilot;
+    marsTrackReveal?.sample(simTime, trueState, step.believedState);
   } else {
     trueState = stepRover(trueState, currentControl, terrain, dt);
   }
@@ -343,6 +353,7 @@ function beginRun(scenarioKey) {
   simTime = 0;
   autopilot = null;
   marsDriftModel = null;
+  marsTrackReveal = null;
   runMaxSlopeDeg = 0;
   lastDryRunSummary = null;
   lastDryRunSignature = null;
@@ -432,6 +443,7 @@ function resetRun() {
   visibleState = null;
   autopilot = null;
   marsDriftModel = null;
+  marsTrackReveal = null;
   plannedWaypoints = [];
   pendingDownPulses = [];
 }
