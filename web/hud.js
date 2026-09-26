@@ -13,7 +13,7 @@ import { renderPlanningPanel } from "./hud-planning.js";
 import { copyResultText } from "./hud-clipboard.js";
 import { formatShareResult, formatLegGrid } from "./share-result.js";
 import { formatPredictedLine, driftLabel } from "./mars-run.js";
-import { drawTracks } from "./hud-minimap.js";
+import { drawTracks } from "./hud-tracks.js";
 
 /** Create the mission panel DOM inside `hostEl` (the existing .hud side panel). Returns a handle with render functions. */
 export function createHud(hostEl) {
@@ -159,14 +159,16 @@ export function createHud(hostEl) {
 
       const tracksCanvas = document.createElement("canvas");
       tracksCanvas.className = "mission-endcard-tracks";
-      tracksCanvas.width = 220;
-      tracksCanvas.height = 220;
+      // Internal resolution higher than the CSS display size (styles.css
+      // caps it at 220px) so the fitted view/inset/labels stay legible.
+      tracksCanvas.width = 260;
+      tracksCanvas.height = 260;
       endcard.appendChild(tracksCanvas);
-      drawTracks(tracksCanvas, marsDrift.terrain, marsDrift.truePath, marsDrift.believedPath);
+      drawTracks(tracksCanvas, marsDrift.terrain, marsDrift.truePath, marsDrift.believedPath, marsDrift.offsetM);
 
       const legend = document.createElement("p");
       legend.className = "mission-endcard-line mission-tracks-legend";
-      legend.textContent = "Solid white: where TYCHO really drove. Dashed amber: where the co-pilot believed it was driving.";
+      legend.textContent = "Solid white: where TYCHO really drove. Dashed magenta: where the co-pilot believed it was driving. View is fitted to this run's own drive, not the whole map.";
       endcard.appendChild(legend);
 
       // The end card can run taller than the panel viewport (same clipping

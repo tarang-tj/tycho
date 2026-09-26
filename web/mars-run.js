@@ -135,9 +135,24 @@ export function createMarsTrackReveal() {
   const sampler = createPathSampler();
   return {
     sample: sampler.sample,
-    /** @param {{offsetM():{x:number,y:number}}|null} driftModel */
-    finalize(driftModel) {
+    /**
+     * Review finding 5: push one final true/believed pair from the CURRENT
+     * true state and the drift model's current offset before returning, so
+     * the drawn tracks' endpoints always match the reported meters exactly -
+     * without this, the last periodic sample() point (up to
+     * PATH_SAMPLE_INTERVAL_S seconds stale) could trail the reported offset
+     * on a mission that ends mid-drive (e.g. a "won" transition).
+     * @param {{offsetM():{x:number,y:number}}|null} driftModel
+     * @param {{x:number,y:number}|null} [trueState] - the true rover state at mission end
+     * @param {{metersPerPixel:number}|null} [terrain] - needed to convert offsetM (meters) into the same pixel space truePath/believedPath use
+     */
+    finalize(driftModel, trueState = null, terrain = null) {
       const offsetM = driftModel ? driftModel.offsetM() : { x: 0, y: 0 };
+      if (trueState) {
+        const mpp = terrain?.metersPerPixel || 1;
+        sampler.truePath.push({ x: trueState.x, y: trueState.y });
+        sampler.believedPath.push({ x: trueState.x + offsetM.x / mpp, y: trueState.y + offsetM.y / mpp });
+      }
       return {
         truePath: sampler.truePath,
         believedPath: sampler.believedPath,

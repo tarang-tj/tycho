@@ -157,3 +157,23 @@ test("createMarsTrackReveal: sample() feeds the same downsampled truePath/believ
   assert.deepEqual(result.believedPath, [{ x: 0.2, y: 0 }, { x: 1.2, y: 0 }]);
   assert.equal(result.driftLine, "Drift this run: the co-pilot thought TYCHO was 0 m from where it really was.");
 });
+
+test("createMarsTrackReveal: finalize() with a trueState pushes one final true/believed pair matching the reported offset exactly (review finding 5)", () => {
+  const reveal = createMarsTrackReveal();
+  reveal.sample(0, { x: 0, y: 0 }, { x: 0.2, y: 0 });
+  const fakeDriftModel = { offsetM: () => ({ x: 4, y: 0 }) }; // meters
+  const result = reveal.finalize(fakeDriftModel, { x: 10, y: 0 }, { metersPerPixel: 2 });
+  const lastTrue = result.truePath[result.truePath.length - 1];
+  const lastBelieved = result.believedPath[result.believedPath.length - 1];
+  assert.deepEqual(lastTrue, { x: 10, y: 0 });
+  assert.deepEqual(lastBelieved, { x: 12, y: 0 }); // 10 + 4m offset / 2 m-per-px
+  assert.equal(result.offsetM.x, 4);
+});
+
+test("createMarsTrackReveal: finalize() with no trueState leaves the sampled paths untouched (mission ended before any tick sampled)", () => {
+  const reveal = createMarsTrackReveal();
+  const result = reveal.finalize({ offsetM: () => ({ x: 3, y: 4 }) });
+  assert.deepEqual(result.truePath, []);
+  assert.deepEqual(result.believedPath, []);
+  assert.equal(result.driftLine, "Drift this run: the co-pilot thought TYCHO was 5 m from where it really was.");
+});

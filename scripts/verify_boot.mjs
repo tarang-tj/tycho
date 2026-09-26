@@ -296,52 +296,157 @@ try {
   // ---------------------------------------------------------------------
   // Flight Rules drift reveal (present-time rule, spec 3-Lane-3 acceptance
   // (3)): the believed-vs-true track and the "Drift this run" line must be
-  // absent while the rover is still driving, appear ONLY once the mission
+  // absent while the rover is ACTUALLY DRIVING, appear ONLY once the mission
   // reaches a terminal status, and never linger into the next run.
-  // ---------------------------------------------------------------------
-  // Same technique as the co-pilot HOLD proof above (a 1 deg slope limit the
-  // spawn-area terrain cannot possibly satisfy): a fast, reliable route to a
-  // terminal mission status, so this probe doesn't have to wait out a real
-  // multi-minute drive to the actual level goal.
-  await page.evaluate(() => window.TYCHO.debug.startMission("close")); // fresh run
-  await page.evaluate(() => window.TYCHO.debug.setGuardrails({ maxSlopeDeg: 1, hazardMode: "stop", maxAutonomousDistanceM: 50000, lookaheadRadiusM: 50 }));
-  const driftTarget = { x: spawnMeta.x + 50, y: spawnMeta.y + 50 };
-  await page.evaluate((wp) => window.TYCHO.debug.uplinkPlan([wp]), driftTarget);
+  //
+  // W2-X review finding 1: the previous version of this probe sampled ONCE,
+  // 3s before the plan was even delivered, on a 1deg-slope HOLD fixture that
+  // never moved the rover at all (0m) - so it could never catch a leak that
+  // only happens WHILE driving. Two real leaks (the offset written to the
+  // status line every tick, and the whole end card shown from delivery
+  // onward) both passed the old check. This version drives a real route -
+  // default guardrails, waypoint (494,494), same "close" scenario the
+  // review used to reproduce both leaks (~509m from the real Jezero spawn,
+  // ends "stalled" at ~517m) - and samples repeatedly across the whole
+  // drive, not once before it starts.
+  //
+  // This whole probe runs on its OWN page (like the mobile top-bar check
+  // below), never the shared `page` the rest of this script drives: it
+  // installs Playwright's virtual clock (see below), and handing time back
+  // to real timers afterward (via clock.resume()) is not guaranteed to
+  // restore native requestAnimationFrame's exact cadence for whatever runs
+  // next on the same page - discovered live while proving this fix (a
+  // resumed shared page later failed an unrelated Wave-1 boot check with a
+  // blank canvas). An isolated, disposable page removes that risk entirely.
+  const driftPage = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  try {
+    driftPage.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+    driftPage.on("pageerror", (error) => errors.push(error.message));
+    await driftPage.goto(`http://127.0.0.1:${port}/web/`, { waitUntil: "networkidle" });
+    await driftPage.waitForFunction(() => window.TYCHO?.ready === true, null, { timeout: 10000 });
+    await driftPage.evaluate(() => window.TYCHO.switchLevel("mars"));
+    await driftPage.waitForFunction(() => window.TYCHO.getLevel() === "mars", null, { timeout: 5000 });
+    await driftPage.waitForFunction(() => window.TYCHO.ready === true, null, { timeout: 10000 });
 
-  // Mid-flight, before the plan has even been delivered (still driving in
-  // the sense that the mission is "active" and no terminal reveal has
-  // happened yet): the drift reveal must not be visible.
-  await page.waitForTimeout(Math.max(0, marsDelaySec * 1000 - 3000));
-  // isVisible() (not a bare existence check): a PREVIOUS run's end card can
-  // still hold a stale `.mission-endcard-drift` element in the DOM while
-  // hidden (innerHTML is only rebuilt on the NEXT showEndCard() call) - only
-  // actual visibility proves nothing leaked into this run's present time.
-  const driftLineVisible = await page.locator(".mission-endcard-drift").isVisible();
-  const tracksVisible = await page.locator(".mission-endcard-tracks").isVisible();
-  assert.equal(driftLineVisible, false, "the drift line leaked present time: visible WHILE the rover was still driving");
-  assert.equal(tracksVisible, false, "the believed/true tracks leaked present time: visible WHILE the rover was still driving");
-  console.log("Mars: drift reveal correctly absent while driving.");
+    await driftPage.evaluate(() => window.TYCHO.debug.startMission("close")); // fresh run, default guardrails
+    const driftWaypoint = { x: 494, y: 494 };
+    const driftSpawn = await driftPage.evaluate(() => window.TYCHO.getTrueState());
+    await driftPage.evaluate((wp) => window.TYCHO.debug.uplinkPlan([wp]), driftWaypoint);
 
-  await waitUntil(async () => {
-    const m = await page.evaluate(() => window.TYCHO.debug.getMission());
-    return ["won", "tipped", "stalled", "held"].includes(m.status);
-  }, marsDelaySec * 1000 + 5000, "drift-reveal probe: Mars run never reached a terminal status");
+    // Playwright's virtual clock (not a shortened stall timeout or
+    // guardrail hack) is what keeps this affordable: it drives the render
+    // loop's requestAnimationFrame through the wait AND the drive itself
+    // without this probe burning real wall-clock time on either. main.js's
+    // frameBody still computes dt from real (virtual) frame timestamps, so
+    // the fixed-timestep physics and the mission's real stall/timeout rules
+    // run completely unshortened - only how fast THIS TEST observes them
+    // changes.
+    await driftPage.clock.install();
+    const TERMINAL = ["won", "tipped", "stalled", "held"];
+    const presentTimeSamples = [];
+    let driveStarted = false;
+    let terminalStatus = null;
+    // The 509m real drive to (494,494) takes a few minutes of simulated time
+    // at the rover's real (unshortened) drive speed before the 75s stall
+    // timeout even starts counting down - this ceiling is generous over
+    // that, not a shortcut around it; page.clock makes it cost seconds of
+    // real time, not minutes.
+    const STEP_MS = 2000;
+    const maxDriveMs = marsDelaySec * 1000 + 400000;
+    for (let elapsedMs = 0; elapsedMs < maxDriveMs && !terminalStatus; elapsedMs += STEP_MS) {
+      await driftPage.clock.runFor(STEP_MS);
+      const sample = await driftPage.evaluate(() => {
+        // Checked here, WHILE this same sample is known pre-terminal (not
+        // via a separate Playwright locator call after the loop breaks) -
+        // by the time this evaluate resolves on the tick that flips
+        // mission.status to terminal, handleMissionTransition has already
+        // run showEndCard() for THIS tick, so a post-loop visibility check
+        // would just observe the (correct) reveal, not catch a leak.
+        // #mission-panel's own CSS (`[hidden] { display: none !important;
+        // }`) makes `.hidden` on the ancestor endcard an exact proxy for
+        // actual visibility here.
+        const endcardHidden = document.querySelector(".mission-endcard")?.hidden ?? true;
+        return {
+          hasAutopilot: !!window.TYCHO.debug.getAutopilot(),
+          trueState: window.TYCHO.getTrueState(),
+          status: window.TYCHO.debug.getMission().status,
+          bodyText: document.body.innerText,
+          driftVisible: !endcardHidden && !!document.querySelector(".mission-endcard-drift"),
+          tracksVisible: !endcardHidden && !!document.querySelector(".mission-endcard-tracks"),
+        };
+      });
+      if (!driveStarted && sample.hasAutopilot && hasMoved(driftSpawn, sample.trueState)) driveStarted = true;
+      if (TERMINAL.includes(sample.status)) { terminalStatus = sample.status; break; }
+      if (driveStarted) presentTimeSamples.push(sample);
+    }
+    assert.ok(driveStarted, "drift-reveal probe: the plan was delivered but the rover never actually moved from spawn - not a real drive");
+    assert.ok(terminalStatus, `drift-reveal probe: Mars run never reached a terminal status within ${maxDriveMs}ms (virtual)`);
+    assert.ok(presentTimeSamples.length >= 3, `drift-reveal probe: too few in-drive samples (${presentTimeSamples.length}) to trust the present-time check`);
+    for (const sample of presentTimeSamples) {
+      // Covers the status line too (a1's leak wrote the offset there every
+      // tick): innerText includes it, not just the end card's own elements.
+      assert.doesNotMatch(sample.bodyText, /Drift this run|co-pilot thought/, `the drift reveal leaked present time while driving (status=${sample.status})`);
+      assert.equal(sample.driftVisible, false, `the drift line leaked present time: visible WHILE the rover was still driving (status=${sample.status})`);
+      assert.equal(sample.tracksVisible, false, `the believed/true tracks leaked present time: visible WHILE the rover was still driving (status=${sample.status})`);
+    }
+    console.log(`Mars: drift reveal correctly absent across ${presentTimeSamples.length} samples of a real drive (spawn -> waypoint(494,494)), reached terminal status "${terminalStatus}".`);
 
-  await page.waitForSelector(".mission-endcard-drift", { state: "visible", timeout: 5000 });
-  const driftText = await page.evaluate(() => document.querySelector(".mission-endcard-drift").textContent);
-  assert.match(driftText, /Drift this run: the co-pilot thought TYCHO was \d+ m from where it really was\./, `drift reveal line missing/malformed at mission end: "${driftText}"`);
-  assert.match(driftText, /Modeled drift: about 1% of distance \(a game assumption, not a measured rover figure\)/, `drift reveal line is missing the ALWAYS-present drift label: "${driftText}"`);
-  const tracksCanvasSize = await page.evaluate(() => {
-    const canvas = document.querySelector(".mission-endcard-tracks");
-    return canvas ? { width: canvas.width, height: canvas.height } : null;
-  });
-  assert.ok(tracksCanvasSize?.width > 0, "the believed/true tracks canvas is missing from the end card at mission end");
-  console.log(`Mars: drift reveal shown at mission end - "${driftText}"`);
+    // Generous timeout (not 5s like the rest of this file): the hundred-plus
+    // rAF frames page.clock.runFor() above just fired back-to-back are a
+    // real CPU burst, and under contention with another heavy process on
+    // this machine the DOM update can lag a few seconds behind an already-
+    // correct mission.status (observed live proving this fix - the mission
+    // itself was always "stalled" already; only the endcard's own render
+    // was slow to land under load).
+    await driftPage.waitForSelector(".mission-endcard-drift", { state: "visible", timeout: 20000 });
+    const driftText = await driftPage.evaluate(() => document.querySelector(".mission-endcard-drift").textContent);
+    assert.match(driftText, /Drift this run: the co-pilot thought TYCHO was \d+ m from where it really was\./, `drift reveal line missing/malformed at mission end: "${driftText}"`);
+    assert.match(driftText, /Modeled drift: about 1% of distance \(a game assumption, not a measured rover figure\)/, `drift reveal line is missing the ALWAYS-present drift label: "${driftText}"`);
 
-  await page.evaluate(() => window.TYCHO.debug.startMission("close")); // retry
-  const endcardHiddenAfterRetry = await page.evaluate(() => document.querySelector(".mission-endcard")?.hidden);
-  assert.equal(endcardHiddenAfterRetry, true, "the previous run's drift reveal remained visible after retrying (present-time leak into the next run)");
-  console.log("Mars: drift reveal cleared after retry.");
+    // Review finding 2: the tracks canvas must actually RENDER both track
+    // colors after a real drive, not just exist at some size - counts exact
+    // pixel matches for the true (white) and believed (hud-tracks.js's
+    // BELIEVED_COLOR, #ff5ec4) track colors via an offscreen copy of the canvas.
+    const trackPixelCounts = await driftPage.evaluate(() => {
+      const canvas = document.querySelector(".mission-endcard-tracks");
+      if (!canvas) return null;
+      const off = document.createElement("canvas");
+      off.width = canvas.width;
+      off.height = canvas.height;
+      const ctx = off.getContext("2d");
+      ctx.drawImage(canvas, 0, 0);
+      const { data } = ctx.getImageData(0, 0, off.width, off.height);
+      let white = 0, believed = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        const [r, g, b] = [data[i], data[i + 1], data[i + 2]];
+        if (r === 255 && g === 255 && b === 255) white += 1;
+        else if (r === 255 && g === 94 && b === 196) believed += 1; // hud-tracks.js BELIEVED_COLOR #ff5ec4
+      }
+      return { width: canvas.width, white, believed };
+    });
+    assert.ok(trackPixelCounts?.width > 0, "the believed/true tracks canvas is missing from the end card at mission end");
+    assert.ok(trackPixelCounts.white > 5, `true track (white) is not actually rendered: only ${trackPixelCounts.white} matching pixels`);
+    assert.ok(trackPixelCounts.believed > 5, `believed track is not actually rendered: only ${trackPixelCounts.believed} matching pixels`);
+    console.log(`Mars: drift reveal shown at mission end - "${driftText}" (tracks canvas: ${trackPixelCounts.white} true-track px, ${trackPixelCounts.believed} believed-track px).`);
+
+    await driftPage.evaluate(() => window.TYCHO.debug.startMission("close")); // retry
+    const afterRetry = await driftPage.evaluate(() => ({
+      endcardHidden: document.querySelector(".mission-endcard")?.hidden,
+      marsTrackReveal: window.TYCHO.debug.getMarsTrackReveal(),
+    }));
+    assert.equal(afterRetry.endcardHidden, true, "the previous run's drift reveal remained visible after retrying (present-time leak into the next run)");
+    // Review finding 4: marsTrackReveal itself must be reset on every fresh
+    // run, not just hidden by the DOM - otherwise a future terminal status
+    // reached without a plan ever being delivered could show the PREVIOUS
+    // run's tracks (mutation (c) in the W2-X review: removing the
+    // `marsTrackReveal = null` resets in beginRun/resetRun survived every
+    // other check because nothing else reads marsTrackReveal before a fresh
+    // plan delivery overwrites it).
+    assert.equal(afterRetry.marsTrackReveal, null, "marsTrackReveal was not reset on retry - a future no-plan mission end could leak the previous run's tracks");
+    console.log("Mars: drift reveal cleared after retry, and marsTrackReveal itself was reset (not just hidden).");
+  } finally {
+    await driftPage.close();
+  }
 
   // ---------------------------------------------------------------------
   // Flight Rules "Dry run": placing a waypoint through the real UI (not the

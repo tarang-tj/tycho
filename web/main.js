@@ -103,6 +103,10 @@ const api = {
     getMission: () => mission,
     getGuardrails: () => guardrails,
     getAutopilot: () => autopilot,
+    // Review finding 4: lets the boot probe prove marsTrackReveal is reset
+    // on every fresh run (beginRun/resetRun), not just left over from
+    // whatever Mars run last created one (mutation (c) in the W2-X review).
+    getMarsTrackReveal: () => marsTrackReveal,
     sampleSlope(x, y) { return terrain?.slopeDeg(x, y) ?? null; },
     getDelaySec: () => signal?.oneWayDelaySec ?? null,
     // H4: exposed so a Playwright/manual probe can confirm repeated fast
@@ -155,7 +159,7 @@ function handleMissionTransition() {
   // tracks and marsDriftModel's accumulated offset are otherwise never read,
   // so the believed-vs-true gap cannot leak into present time.
   const marsDrift = currentLevelKey === "mars" && marsTrackReveal
-    ? { ...marsTrackReveal.finalize(marsDriftModel), terrain }
+    ? { ...marsTrackReveal.finalize(marsDriftModel, trueState, terrain), terrain }
     : null;
   scoreboardData = recordRun(scoreboardData, currentLevelKey, {
     outcome: mission.outcome, timeSec, distanceM: mission.distanceTraveledM, copilotOn,
