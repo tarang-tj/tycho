@@ -8,7 +8,7 @@
 // finding 5) so it stays unit-testable without a <canvas>; re-exported here
 // so existing importers (hud.js, tests/hud-tracks.test.mjs) don't need to
 // know about the split.
-import { computeTrackFit, niceScaleNumber, insetScreenRect } from "./hud-tracks-fit.js";
+import { computeTrackFit, niceScaleNumber, insetScreenRect, formatOffsetMeters, scaleBarPlacement } from "./hud-tracks-fit.js";
 
 export { computeTrackFit };
 
@@ -86,12 +86,14 @@ function drawViewport(ctx, terrain, truePath, believedPath, view, rect) {
   return toCanvas;
 }
 
-function drawScaleBar(ctx, terrain, extentPx, rect) {
+function drawScaleBar(ctx, terrain, extentPx, rect, insetCorner = null) {
   const viewSpanM = extentPx * (terrain.metersPerPixel || 1);
   const barM = niceScaleNumber(viewSpanM * 0.25);
   const barPx = (barM / (terrain.metersPerPixel || 1)) * (rect.w / extentPx);
-  const x0 = rect.x + 6;
-  const y0 = rect.y + rect.h - 8;
+  // Kept clear of the zoom inset (it moves bottom-right when the inset is bottom-left).
+  const { x0: bx, y0: by, right } = scaleBarPlacement(insetCorner, rect.w, rect.h, barPx);
+  const x0 = rect.x + bx;
+  const y0 = rect.y + by;
   ctx.save();
   ctx.strokeStyle = "#ffffff";
   ctx.lineWidth = 1.5;
@@ -105,7 +107,8 @@ function drawScaleBar(ctx, terrain, extentPx, rect) {
   ctx.stroke();
   ctx.font = "12px sans-serif";
   ctx.fillStyle = "#ffffff";
-  ctx.fillText(`${barM} m`, x0, y0 - 5);
+  ctx.textAlign = right ? "right" : "left";
+  ctx.fillText(`${barM} m`, right ? x0 + barPx : x0, y0 - 5);
   ctx.restore();
 }
 
@@ -121,10 +124,9 @@ function drawOffsetLabel(ctx, toCanvas, fit, offsetM, fontPx = 12) {
   ctx.lineTo(bx, by);
   ctx.stroke();
   ctx.setLineDash([]);
-  const magnitudeM = Math.round(Math.hypot(offsetM.x, offsetM.y));
   ctx.font = `${fontPx}px sans-serif`;
   ctx.fillStyle = OFFSET_COLOR;
-  ctx.fillText(`${magnitudeM} m`, (tx + bx) / 2 + 4, (ty + by) / 2 - 4);
+  ctx.fillText(formatOffsetMeters(Math.hypot(offsetM.x, offsetM.y)), (tx + bx) / 2 + 4, (ty + by) / 2 - 4);
   ctx.restore();
 }
 
@@ -182,7 +184,7 @@ export function drawTracks(canvas, terrain, truePath = [], believedPath = [], of
   const fit = computeTrackFit(truePath, believedPath);
   const mainRect = { x: 0, y: 0, w: cssW, h: cssH };
   const toCanvas = drawViewport(ctx, terrain, truePath, believedPath, fit, mainRect);
-  drawScaleBar(ctx, terrain, fit.extentPx, mainRect);
+  drawScaleBar(ctx, terrain, fit.extentPx, mainRect, fit.inset?.corner ?? null);
   if (fit.trueEnd && fit.believedEnd) drawOffsetLabel(ctx, toCanvas, fit, offsetM);
   if (fit.inset) drawInset(ctx, terrain, truePath, believedPath, fit, cssW, cssH, offsetM);
   ctx.restore();

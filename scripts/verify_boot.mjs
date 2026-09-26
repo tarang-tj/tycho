@@ -400,7 +400,7 @@ try {
     // was slow to land under load).
     await driftPage.waitForSelector(".mission-endcard-drift", { state: "visible", timeout: 20000 });
     const driftText = await driftPage.evaluate(() => document.querySelector(".mission-endcard-drift").textContent);
-    assert.match(driftText, /Drift this run: the co-pilot thought TYCHO was \d+ m from where it really was\./, `drift reveal line missing/malformed at mission end: "${driftText}"`);
+    assert.match(driftText, /Drift this run: the co-pilot thought TYCHO was (?:<0\.1|\d+(?:\.\d)?) m from where it really was\./, `drift reveal line missing/malformed at mission end: "${driftText}"`);
     assert.match(driftText, /Modeled drift: about 1% of distance \(a game assumption, not a measured rover figure\)/, `drift reveal line is missing the ALWAYS-present drift label: "${driftText}"`);
 
     // Review finding 1 (W2-X3): the old whole-canvas color-count assertion
@@ -474,7 +474,7 @@ try {
     // segment/label (OFFSET_COLOR #ffe066) actually lands inside that inset.
     const insetPlacement = await driftPage.evaluate(async () => {
       const { drawTracks } = await import("/web/hud-tracks.js");
-      const { computeTrackFit, insetScreenRect } = await import("/web/hud-tracks-fit.js");
+      const { computeTrackFit, insetScreenRect, scaleBarPlacement, niceScaleNumber } = await import("/web/hud-tracks-fit.js");
       const terrain = { metersPerPixel: 20, elev: () => 0 };
       const cases = {
         se: {
@@ -485,6 +485,21 @@ try {
           truePath: [{ x: 500, y: 500 }, { x: 485, y: 485 }, { x: 470, y: 470 }],
           believedPath: [{ x: 500, y: 500 }, { x: 484.7, y: 485 }, { x: 469.4, y: 470 }],
         },
+        // NE-bound puts the inset bottom-left, where the scale bar used to sit (W2-R6 finding).
+        ne: {
+          truePath: [{ x: 500, y: 500 }, { x: 515, y: 485 }, { x: 530, y: 470 }],
+          believedPath: [{ x: 500, y: 500 }, { x: 515.3, y: 485 }, { x: 530.6, y: 470 }],
+        },
+      };
+      const count = (data, W, box, rgb) => {
+        let n = 0;
+        for (let y = Math.max(0, Math.floor(box.y)); y < Math.min(W, Math.ceil(box.y + box.h)); y++) {
+          for (let x = Math.max(0, Math.floor(box.x)); x < Math.min(W, Math.ceil(box.x + box.w)); x++) {
+            const i = (y * W + x) * 4;
+            if (data[i] === rgb[0] && data[i + 1] === rgb[1] && data[i + 2] === rgb[2]) n++;
+          }
+        }
+        return n;
       };
       const results = {};
       for (const [key, { truePath, believedPath }] of Object.entries(cases)) {
@@ -502,7 +517,22 @@ try {
             if (data[i] === 255 && data[i + 1] === 224 && data[i + 2] === 102) offsetPxInInset++; // OFFSET_COLOR #ffe066
           }
         }
-        results[key] = { corner: fit.inset.corner, offsetPxInInset };
+        // The inset's meters label text box, separate from the dashed segment: the
+        // synthetic offsets are purely along x, so the segment is a horizontal
+        // line through the endpoint midpoint and this box (4 px right, 3-14 px
+        // above that midpoint) holds only the label glyphs.
+        const mid = { x: (fit.trueEnd.x + fit.believedEnd.x) / 2, y: (fit.trueEnd.y + fit.believedEnd.y) / 2 };
+        const mx = rect.x + ((mid.x - fit.inset.viewMinX) / fit.inset.extentPx) * rect.w;
+        const my = rect.y + ((mid.y - fit.inset.viewMinY) / fit.inset.extentPx) * rect.h;
+        const labelPx = count(data, canvas.width, { x: mx + 4, y: my - 14, w: 26, h: 11 }, [255, 224, 102]);
+        // Scale bar: white pixels inside its own rect, and that rect clear of the inset.
+        const barM = niceScaleNumber(fit.extentPx * terrain.metersPerPixel * 0.25);
+        const barPx = (barM / terrain.metersPerPixel) * (canvas.width / fit.extentPx);
+        const bar = scaleBarPlacement(fit.inset.corner, canvas.width, canvas.height, barPx).rect;
+        const barWhitePx = count(data, canvas.width, bar, [255, 255, 255]);
+        const insetBox = { x: rect.x - 2, y: fit.inset.corner[0] === "n" ? rect.y - 14 : rect.y, w: rect.w + 4, h: rect.h + 14 };
+        const barUnderInset = bar.x < insetBox.x + insetBox.w && insetBox.x < bar.x + bar.w && bar.y < insetBox.y + insetBox.h && insetBox.y < bar.y + bar.h;
+        results[key] = { corner: fit.inset.corner, offsetPxInInset, labelPx, barWhitePx, barUnderInset };
       }
       return results;
     });
@@ -510,13 +540,23 @@ try {
     assert.equal(insetPlacement.nw.corner, "se", `NW-bound drive expected the opposite (se) inset, got ${insetPlacement.nw.corner}`);
     assert.ok(insetPlacement.se.offsetPxInInset > 0, "SE-bound drive: no offset-label/segment pixels found inside its own inset - the meters gap is not actually visible there");
     assert.ok(insetPlacement.nw.offsetPxInInset > 0, "NW-bound drive: no offset-label/segment pixels found inside its own inset");
+    for (const k of ["se", "nw", "ne"]) {
+      const c = insetPlacement[k];
+      assert.ok(c.labelPx > 3, `${k.toUpperCase()}-bound drive: the inset's meters label is not drawn (${c.labelPx} label px) - the gap has no readable size`);
+      assert.ok(c.barWhitePx > 10, `${k.toUpperCase()}-bound drive: the scale bar is not drawn (${c.barWhitePx} white px in its rect)`);
+      assert.equal(c.barUnderInset, false, `${k.toUpperCase()}-bound drive: the scale bar sits under the ${c.corner} inset`);
+    }
+    assert.equal(insetPlacement.ne.corner, "sw", `NE-bound drive expected the opposite (sw) inset, got ${insetPlacement.ne.corner}`);
+    console.log(`Inset labels and scale bar: meters label px SE/NW/NE ${insetPlacement.se.labelPx}/${insetPlacement.nw.labelPx}/${insetPlacement.ne.labelPx}, scale bar white px ${insetPlacement.se.barWhitePx}/${insetPlacement.nw.barWhitePx}/${insetPlacement.ne.barWhitePx}, none under the inset.`);
     console.log(`Inset placement: SE-bound -> ${insetPlacement.se.corner} inset (${insetPlacement.se.offsetPxInInset} offset-label px inside it), NW-bound -> ${insetPlacement.nw.corner} inset (${insetPlacement.nw.offsetPxInInset} offset-label px inside it).`);
 
     await driftPage.evaluate(() => window.TYCHO.debug.startMission("close")); // retry
     const afterRetry = await driftPage.evaluate(() => ({
       endcardHidden: document.querySelector(".mission-endcard")?.hidden,
-      marsTrackReveal: window.TYCHO.debug.getMarsTrackReveal(),
-      lastMarsDrift: window.TYCHO.debug.getLastMarsDrift(),
+      // Booleans only: returning the un-reset objects (with the whole terrain)
+      // made a failing run die of memory instead of failing this assertion.
+      marsTrackReveal: window.TYCHO.debug.getMarsTrackReveal() === null ? null : "not reset",
+      lastMarsDrift: window.TYCHO.debug.getLastMarsDrift() === null ? null : "not reset",
     }));
     assert.equal(afterRetry.endcardHidden, true, "the previous run's drift reveal remained visible after retrying (present-time leak into the next run)");
     assert.equal(afterRetry.lastMarsDrift, null, "the previous run's finalized tracks (getLastMarsDrift) were not reset on retry");

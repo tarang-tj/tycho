@@ -3,6 +3,7 @@
 // Pure/injectable: no DOM dependency, unit-testable in node.
 import { planLegsWithBoundaries, finalizeLegOutcomes, createPathSampler } from "./sol-sim.js";
 import { DRIFT_PCT } from "./drift.js";
+import { formatOffsetMeters } from "./hud-tracks-fit.js";
 
 // A dry run always samples the fixed seed range [DRY_RUN_BASE_SEED,
 // DRY_RUN_BASE_SEED + DRY_RUN_N - 1] (see dry-run.js). N=100 was chosen
@@ -171,7 +172,7 @@ export function createMarsTrackReveal() {
  */
 export function formatRealDriftLine(offsetM) {
   const magnitudeM = Math.hypot(offsetM.x, offsetM.y);
-  return `Drift this run: the co-pilot thought TYCHO was ${Math.round(magnitudeM)} m from where it really was.`;
+  return `Drift this run: the co-pilot thought TYCHO was ${formatOffsetMeters(magnitudeM)} from where it really was.`;
 }
 
 /**

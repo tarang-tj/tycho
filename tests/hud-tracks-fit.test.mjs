@@ -5,7 +5,7 @@
 // unit-testable directly.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { pickInsetCorner, insetScreenRect, computeTrackFit } from "../web/hud-tracks-fit.js";
+import { pickInsetCorner, insetScreenRect, computeTrackFit, formatOffsetMeters, scaleBarPlacement } from "../web/hud-tracks-fit.js";
 
 test("pickInsetCorner: a NE-bound drive (east, north of center) gets the SW inset", () => {
   assert.equal(pickInsetCorner({ x: 10, y: -10 }, { x: 10.6, y: -10 }, 0, 0), "sw");
@@ -52,4 +52,29 @@ test("computeTrackFit: the mirrored NW-bound drive's inset carries the opposite 
   const fit = computeTrackFit(truePath, believedPath);
   assert.ok(fit.inset, "expected an inset for a sub-pixel endpoint gap");
   assert.equal(fit.inset.corner, "se");
+});
+
+test("formatOffsetMeters keeps one decimal below 1 m so a real sub-meter drift never reads as 0 m", () => {
+  assert.equal(formatOffsetMeters(0.41), "0.4 m");
+  assert.equal(formatOffsetMeters(0.04), "<0.1 m");
+  assert.equal(formatOffsetMeters(0), "0 m");
+  assert.equal(formatOffsetMeters(1.4), "1 m");
+  assert.equal(formatOffsetMeters(12.257), "12 m");
+});
+
+test("scaleBarPlacement never overlaps the zoom inset in any corner (NE-bound drives put the inset bottom-left)", () => {
+  const W = 220, H = 220;
+  const hit = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  for (const corner of ["nw", "ne", "sw", "se"]) {
+    const inset = insetScreenRect(corner, W, H);
+    // include the inset's "zoom Nx" label strip (14 px above a north inset, below a south one)
+    const box = { x: inset.x - 2, y: corner[0] === "n" ? inset.y - 14 : inset.y, w: inset.w + 4, h: inset.h + 14 };
+    for (const barPx of [10, 30, 55]) {
+      const { rect } = scaleBarPlacement(corner, W, H, barPx);
+      assert.equal(hit(rect, box), false, `scale bar (${barPx}px) overlaps the ${corner} inset`);
+      assert.ok(rect.x >= 0 && rect.x + rect.w <= W, `scale bar (${barPx}px) runs off the canvas with a ${corner} inset`);
+    }
+  }
+  assert.equal(scaleBarPlacement("sw", W, H, 30).right, true);
+  assert.equal(scaleBarPlacement(null, W, H, 30).right, false);
 });

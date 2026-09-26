@@ -92,3 +92,32 @@ export function niceScaleNumber(x) {
   const nice = base < 1.5 ? 1 : base < 3.5 ? 2 : base < 7.5 ? 5 : 10;
   return nice * 10 ** exp;
 }
+
+/**
+ * Meters text for the drift reveal (end-card line and canvas labels). Below
+ * 1 m it keeps one decimal, so a real 0.4 m offset never reads as "0 m"
+ * while its two endpoints are visibly apart in the inset.
+ */
+export function formatOffsetMeters(m) {
+  const v = Math.abs(m);
+  if (v === 0) return "0 m"; // no drift model at all (e.g. mission ended before a plan was delivered)
+  if (v < 0.1) return "<0.1 m";
+  return v < 1 ? `${v.toFixed(1)} m` : `${Math.round(v)} m`;
+}
+
+export const SCALE_BAR_MARGIN_PX = 6;
+export const SCALE_BAR_LABEL_W_PX = 44; // room for a "2000 m" label at 12 px
+
+/**
+ * Where the scale bar goes: bottom-left, unless the zoom inset sits there
+ * (corner "sw", e.g. an NE-bound drive), then bottom-right. Returns the bar's
+ * left end (x0, y0) and a rect covering bar plus label, for overlap tests.
+ */
+export function scaleBarPlacement(insetCorner, cssW, cssH, barPx) {
+  const right = insetCorner === "sw";
+  const w = Math.max(barPx, SCALE_BAR_LABEL_W_PX);
+  const x0 = right ? cssW - SCALE_BAR_MARGIN_PX - barPx : SCALE_BAR_MARGIN_PX;
+  const y0 = cssH - 8;
+  const rectX = right ? cssW - SCALE_BAR_MARGIN_PX - w : SCALE_BAR_MARGIN_PX;
+  return { x0, y0, right, rect: { x: rectX - 1, y: y0 - 18, w: w + 2, h: 22 } };
+}
