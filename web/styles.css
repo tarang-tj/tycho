@@ -211,6 +211,7 @@ body.title-open .hud { transform: translateY(10px); }
 .about-data-head h2 { margin: 0; font-family: var(--cond); font-weight: 600; letter-spacing: 0.08em; font-size: 1.15rem; color: var(--text); }
 .about-data-close { background: transparent; border: 0; color: var(--muted); font-size: 1.4rem; line-height: 1; cursor: pointer; padding: 0.2rem 0.5rem; }
 .about-data-close:hover { color: var(--text); }
+.about-data-intro { margin: 0 0 1.1rem; color: #c9c7c1; font-size: 0.92rem; line-height: 1.55; }
 .about-data-list { display: grid; gap: 0.9rem; margin: 0; }
 .about-data-list dt { font-family: var(--mono); font-size: 0.82rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); margin-bottom: 0.25rem; }
 .about-data-list dd { margin: 0; color: #c9c7c1; font-size: 0.92rem; line-height: 1.55; }

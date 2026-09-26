@@ -1,6 +1,6 @@
 # TYCHO
 
-**Drive a small rover across the real Moon and Mars, with the real speed-of-light delay between you and it.**
+**TYCHO is a rover teleoperation simulator built on real NASA and USGS elevation data from the Moon and Mars. It models the real signal delay and a co-pilot with labeled uncertainty, and lets you drive it in a browser game.**
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-2f3440)](LICENSE)
 [![Zero build](https://img.shields.io/badge/build-none-2f3440)](#run-it-locally)

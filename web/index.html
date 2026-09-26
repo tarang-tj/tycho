@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="description" content="TYCHO: drive a rover over real Moon and Mars terrain with the real signal delay. Independent portfolio project.">
+  <meta name="description" content="TYCHO is a rover teleoperation simulator built on real NASA and USGS elevation data from the Moon and Mars. It models the real signal delay and a co-pilot with labeled uncertainty, and lets you drive it in a browser game. Independent portfolio project.">
   <meta name="theme-color" content="#05060a">
-  <title>TYCHO: drive the delay</title>
+  <title>TYCHO: a rover teleoperation simulator</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500&display=swap">
@@ -50,6 +50,7 @@
         <h2 id="aboutDataTitle">About the data</h2>
         <button type="button" id="aboutDataClose" class="about-data-close" aria-label="Close">&times;</button>
       </div>
+      <p class="about-data-intro">TYCHO is a rover teleoperation simulator built on real NASA and USGS elevation data from the Moon and Mars. It models the real signal delay and a co-pilot with labeled uncertainty, and lets you drive it in a browser game. Here is exactly what's real and what isn't.</p>
       <dl class="about-data-list">
         <div><dt>Elevation is real</dt><dd>Lunokhod: LROC NAC DTM NAC_DTM_LUNOKHOD2, 5 m/px native, NASA/GSFC/Arizona State University. Tycho: LROC NAC DTM NAC_DTM_TYCHOPK01, 2 m/px native, resampled to 2.34 m/px for this crop, NASA/GSFC/Arizona State University. Mars (Jezero): USGS CTX DEM M20_JezeroCrater_CTXDEM_20m, 20 m/px, NASA/JPL-Caltech/MSSS/USGS. Chang'e-4: LROC NAC DTM NAC_DTM_CHANGE4, 5 m/px native, NASA/GSFC/Arizona State University. Apollo 17: LROC NAC DTM NAC_DTM_APOLLO17, 5 m/px native, NASA/GSFC/Arizona State University. All public domain / CC0.</dd></div>
         <div><dt>Lunokhod 2's parked position is real</dt><dd>25.830°N, 30.914°E, facing southeast with its lid still open, per LROC post 699 "Lunokhod 2 Revisited". The rover model shown there is an illustrative period-accurate silhouette, not a survey model.</dd></div>
