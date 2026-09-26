@@ -627,6 +627,8 @@ try {
     assert.equal(await freePage.evaluate(() => document.getElementById("freeDriveToggle").disabled), true, "Free drive must be disabled on Mars");
     await freePage.evaluate(() => window.TYCHO.debug.startMission("close"));
     assert.ok((await freePage.evaluate(() => window.TYCHO.debug.getDelaySec())) > 1, "Mars lost its delay while Free drive was checked");
+    const marsHelp = await freePage.evaluate(() => document.querySelector(".controls-help").textContent);
+    assert.doesNotMatch(marsHelp, /live|free drive/i, `Mars still shows free-drive help text after a Moon free-drive run: "${marsHelp}"`);
     console.log(`Free drive: delay 0 on Lunokhod, labeled, win not scored or saved, share line "${shared.split(" · ").slice(0, 4).join(" · ")}", disabled on Mars.`);
   } finally {
     await freePage.close();

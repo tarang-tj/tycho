@@ -35,6 +35,7 @@ const el = {
   delayNote: document.getElementById("delayNote"),
   freeDriveToggle: document.getElementById("freeDriveToggle"),
   controlsHelp: document.querySelector(".controls-help"),
+  telemetryFreshness: document.getElementById("telemetryFreshness"),
   body: document.getElementById("hudBody"),
   delay: document.getElementById("hudDelay"),
   inFlight: document.getElementById("hudInFlight"),
@@ -394,6 +395,14 @@ function beginRun(scenarioKey) {
   scene?.setWaypoints?.([], { units: "px" });
   scene?.setCopilotState?.({ mode: "", path: [], holdReason: null }, { units: "px" });
 
+  // Set for EVERY run (not only live levels), so a free-drive Moon run's
+  // "what you see is live" text can never carry over to Mars.
+  if (el.telemetryFreshness) el.telemetryFreshness.textContent = runIsFreeDrive ? "live (free drive)" : "last known";
+  if (el.controlsHelp) {
+    el.controlsHelp.textContent = runIsFreeDrive
+      ? "WASD or arrow keys to drive. Drag to look around. Free drive: what you see is live, which real rovers never get."
+      : "WASD or arrow keys to drive. Drag to look around. Everything you see is telemetry from the past.";
+  }
   if (level.mode === "plan") {
     const scenario = resolveScenario(scenarioKey);
     el.delayNote.hidden = false;
@@ -449,11 +458,6 @@ function beginRun(scenarioKey) {
     hud.hidePlanning();
     hud.setStatusLine(runIsFreeDrive ? "Free drive: WASD or arrow keys, no delay." : "Drive live: WASD or arrow keys.");
     const relayLabel = resolveDelayLabel(level, terrain.meta);
-    if (el.controlsHelp) {
-      el.controlsHelp.textContent = runIsFreeDrive
-        ? "WASD or arrow keys to drive. Drag to look around. Free drive: what you see is live, which real rovers never get."
-        : "WASD or arrow keys to drive. Drag to look around. Everything you see is telemetry from the past.";
-    }
     if (runIsFreeDrive) {
       el.delayNote.hidden = false;
       el.delayNote.textContent = FREE_DRIVE_NOTE;
