@@ -40,5 +40,7 @@
   "lrvUncertaintyM": 0.5,
   "spawnGoalDistanceM": 417.0,
   "lineSlopeDegMax": 10.13,
-  "lineSlopeDegMean": 4.05
+  "lineSlopeDegMean": 4.05,
+  "goalDateSource": "https://nssdc.gsfc.nasa.gov/nmc/spacecraft/display.action?id=1971-063A",
+  "goalDateQuote": "On 30 July 1971 two astronauts ... landed in the Hadley Rille/Apennines region of the Moon ... This was the first mission which employed the Lunar Roving Vehicle"
 }

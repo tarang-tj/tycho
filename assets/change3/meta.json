@@ -51,5 +51,7 @@
   },
   "spawnGoalDistanceM": 2220.4,
   "lineSlopeDegMax": 7.01,
-  "lineSlopeDegMean": 1.98
+  "lineSlopeDegMean": 1.98,
+  "goalDateSource": "https://lroc.im-ldi.com/images/637",
+  "goalDateQuote": "Chang'e 3 landed on Mare Imbrium (Sea of Rains) just east of a 450 m diameter impact crater on 14 December 2013."
 }
