@@ -62,8 +62,8 @@ const MEASURE_MS = Number(process.env.TYCHO_PERF_MEASURE_MS ?? 3000);
 const A7_RELATIVE_DROP = 0.9;
 const A7_ABSOLUTE_DROP_MS = 2;
 
-// No literal "/Users/..." or personal path segments below - built from
-// os.homedir() so `git grep -I -E "/Users/|tarangjammalamadaka"` stays clean.
+// No literal home-directory paths below: built from os.homedir() so the
+// personal-path scan stays clean.
 const DEFAULT_OUTPUT = join(homedir(), "plans", "260923-2234-tycho-rover", "levelup-v4", "measurements", "uncapped-baseline.json");
 const OUTPUT_PATH = process.env.TYCHO_PERF_OUTPUT ?? DEFAULT_OUTPUT;
 const BASELINE_COMMIT = process.env.TYCHO_PERF_COMMIT ?? "b9a638f";
