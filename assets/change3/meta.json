@@ -1,0 +1,55 @@
+{
+  "width": 1024,
+  "height": 1024,
+  "metersPerPixel": 4.9999999999999,
+  "minElev": -2686.46044921875,
+  "maxElev": -2612.263671875,
+  "heightScale": 74.19677734375,
+  "sizeKm": 5.12,
+  "spawn": {
+    "x": 823,
+    "y": 195
+  },
+  "goal": {
+    "x": 512,
+    "y": 512
+  },
+  "source": {
+    "product": "NAC_DTM_CHANGE3",
+    "url": "https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_DTM_CHANGE3",
+    "download": "http://lroc.sese.asu.edu/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/SDP/NAC_DTM/CHANGE3/NAC_DTM_CHANGE3.TIF",
+    "factsSource": "LROC post \"Spacecraft Related Coordinates - 2016 Update\", https://lroc.im-ldi.com/images/938"
+  },
+  "license": "LROC Reduced Data Record (RDR) products available through the NASA Planetary Data System (PDS) are in the public domain.",
+  "credit": "NASA/GSFC/Arizona State University",
+  "nodataFilledFraction": 0.0,
+  "notes": "Shaded rendering of real LRO NAC DTM elevation (not a photo). Crop is a 5.12km square at native 5 m/px, centered on the pixel of the Chang'e 3 lander (a surveyed coordinate, not a proxy). Goal is the lander (\"Chang'e 3 lander (landed 2013)\"); spawn is the point 1.5-3km away whose straight drivable line to the lander has the lowest max slope, searched across all compass bearings (no sourced approach direction for this landing, so a bearing is not fabricated -- the algorithmically best-drivable direction is used instead). Yutu rover's separately surveyed final position (LROC post 938) is recorded in yutuLatLon/yutuUncertaintyM for reference; it is not the goal and is not placed as an object by this pipeline step. mask.bin marks nodata-filled cells (rendered as a hatched no-data texture in albedo.jpg/preview.png); spawn and goal are kept >= 20px clear of them. Chang'e 3 is a near-side, direct-line-of-sight lander, so no relay delay model is recorded here (unlike the far-side Chang'e-4/Lunokhod 2 sites).",
+  "maskFile": "mask.bin",
+  "maskMeaning": "1 = no orbital data (filled), treat as impassable",
+  "siteName": "Mare Imbrium, Chang'e 3 lander site",
+  "goalLabel": "Chang'e 3 lander (landed 2013)",
+  "goalLatLon": {
+    "lat": 44.1214,
+    "lon": 340.4883
+  },
+  "spawnLatLon": {
+    "lat": 44.17371,
+    "lon": 340.55968
+  },
+  "landingDate": "14 December 2013",
+  "landerElevCitedM": -2630.0,
+  "landerUncertaintyM": 9.1,
+  "yutuLatLon": {
+    "lat": 44.1208,
+    "lon": 340.4878
+  },
+  "yutuElevCitedM": -2630.0,
+  "yutuUncertaintyM": 12.9,
+  "yutuPixel1024": {
+    "x": 509,
+    "y": 516
+  },
+  "spawnGoalDistanceM": 2220.4,
+  "lineSlopeDegMax": 7.01,
+  "lineSlopeDegMean": 1.98
+}
