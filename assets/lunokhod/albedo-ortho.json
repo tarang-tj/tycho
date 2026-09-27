@@ -1,0 +1,40 @@
+{
+  "site": "lunokhod",
+  "product": "NAC_DTM_LUNOKHOD2_MOSAIC_5M",
+  "productUrl": "https://lroc.im-ldi.com/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/SDP/NAC_DTM/LUNOKHOD2/NAC_DTM_LUNOKHOD2_MOSAIC_5M.IMG",
+  "productPageUrl": "https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_DTM_LUNOKHOD2",
+  "labelBoundsDeg": {
+    "minLat": 24.860874192833,
+    "maxLat": 26.682902406312,
+    "westLon": 30.31647306,
+    "eastLon": 31.092739983005
+  },
+  "mapScaleMetersPerPixel": 4.9999999999999005,
+  "fetchDate": "2026-09-27",
+  "cropWidthPx": 1024,
+  "cropHeightPx": 1024,
+  "cropMetersPerPixel": 4.9999999999999,
+  "alignmentCheck": {
+    "method": "normalized cross-correlation vs a hillshade rendered from this site's own height.bin; wide (+/-16px) search measures any real DTM<->ortho product offset, then (if coherent) the crop is shifted and a narrow (+/-2px) confirm search checks the corrected residual",
+    "acceptMaxOffsetPx": 2,
+    "coherent": true,
+    "rawOffsetPx": {
+      "dy": -11,
+      "dx": 0
+    },
+    "rawNcc": 0.6446,
+    "appliedCorrectionPx": {
+      "dy": 11,
+      "dx": 0
+    },
+    "confirmedResidualOffsetPx": {
+      "dy": 0,
+      "dx": 0
+    },
+    "confirmedResidualNcc": 0.646
+  },
+  "nodataFilledFractionInFetchWindow": 0.01607,
+  "renderNote": "Raw DN linearly stretched (1st-99th percentile) to 8-bit for display; not radiometrically calibrated to I/F reflectance (the label's SCALING_FACTOR/OFFSET do that, but a display texture doesn't need it).",
+  "license": "LROC Reduced Data Record (RDR) products available through the NASA Planetary Data System (PDS) are in the public domain.",
+  "credit": "NASA/GSFC/Arizona State University"
+}

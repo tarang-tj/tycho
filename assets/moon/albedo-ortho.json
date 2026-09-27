@@ -1,0 +1,32 @@
+{
+  "site": "moon",
+  "product": "NAC_DTM_TYCHOPK01_M1136634925_2M",
+  "productUrl": "https://lroc.im-ldi.com/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/SDP/NAC_DTM/TYCHOPK01/NAC_DTM_TYCHOPK01_M1136634925_2M.IMG",
+  "productPageUrl": "https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_DTM_TYCHOPK01",
+  "labelBoundsDeg": {
+    "minLat": -44.27607706,
+    "maxLat": -43.26992175,
+    "westLon": 348.63173585,
+    "eastLon": 348.95075838
+  },
+  "mapScaleMetersPerPixel": 2.0000000000006,
+  "fetchDate": "2026-09-27",
+  "cropWidthPx": 1024,
+  "cropHeightPx": 1024,
+  "cropMetersPerPixel": 2.343750000000703,
+  "alignmentCheck": {
+    "method": "normalized cross-correlation vs a hillshade rendered from this site's own height.bin; wide (+/-16px) search measures any real DTM<->ortho product offset, then (if coherent) the crop is shifted and a narrow (+/-2px) confirm search checks the corrected residual",
+    "acceptMaxOffsetPx": 2,
+    "coherent": false,
+    "reason": "hillshade has insufficient relief texture to measure a reliable offset (peak |ncc| < NCC_COHERENCE_MIN, or best offset never converged inside the search window); shipped at the analytically-computed placement, uncorrected",
+    "rawOffsetPx": {
+      "dy": -1,
+      "dx": 16
+    },
+    "rawNcc": -0.0071
+  },
+  "nodataFilledFractionInFetchWindow": 0.06033,
+  "renderNote": "Raw DN linearly stretched (1st-99th percentile) to 8-bit for display; not radiometrically calibrated to I/F reflectance (the label's SCALING_FACTOR/OFFSET do that, but a display texture doesn't need it).",
+  "license": "LROC Reduced Data Record (RDR) products available through the NASA Planetary Data System (PDS) are in the public domain.",
+  "credit": "NASA/GSFC/Arizona State University"
+}

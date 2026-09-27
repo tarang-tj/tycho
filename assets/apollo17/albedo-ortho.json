@@ -1,0 +1,40 @@
+{
+  "site": "apollo17",
+  "product": "NAC_DTM_APOLLO17_MOSAIC_5M",
+  "productUrl": "https://lroc.im-ldi.com/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/SDP/NAC_DTM/APOLLO17/NAC_DTM_APOLLO17_MOSAIC_5M.IMG",
+  "productPageUrl": "https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_DTM_APOLLO17",
+  "labelBoundsDeg": {
+    "minLat": 19.39074976,
+    "maxLat": 21.30330227,
+    "westLon": 29.90575346,
+    "eastLon": 31.65760468
+  },
+  "mapScaleMetersPerPixel": 4.9999999999999005,
+  "fetchDate": "2026-09-27",
+  "cropWidthPx": 1024,
+  "cropHeightPx": 1024,
+  "cropMetersPerPixel": 4.9999999999999,
+  "alignmentCheck": {
+    "method": "normalized cross-correlation vs a hillshade rendered from this site's own height.bin; wide (+/-16px) search measures any real DTM<->ortho product offset, then (if coherent) the crop is shifted and a narrow (+/-2px) confirm search checks the corrected residual",
+    "acceptMaxOffsetPx": 2,
+    "coherent": true,
+    "rawOffsetPx": {
+      "dy": -1,
+      "dx": -1
+    },
+    "rawNcc": 0.4765,
+    "appliedCorrectionPx": {
+      "dy": 1,
+      "dx": 1
+    },
+    "confirmedResidualOffsetPx": {
+      "dy": 0,
+      "dx": 0
+    },
+    "confirmedResidualNcc": 0.4769
+  },
+  "nodataFilledFractionInFetchWindow": 0.0,
+  "renderNote": "Raw DN linearly stretched (1st-99th percentile) to 8-bit for display; not radiometrically calibrated to I/F reflectance (the label's SCALING_FACTOR/OFFSET do that, but a display texture doesn't need it).",
+  "license": "LROC Reduced Data Record (RDR) products available through the NASA Planetary Data System (PDS) are in the public domain.",
+  "credit": "NASA/GSFC/Arizona State University"
+}
