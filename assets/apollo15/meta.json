@@ -1,0 +1,44 @@
+{
+  "width": 1024,
+  "height": 1024,
+  "metersPerPixel": 2.0000000000006,
+  "minElev": -1954.8770751953125,
+  "maxElev": -1898.5460205078125,
+  "heightScale": 56.3310546875,
+  "sizeKm": 2.048,
+  "spawn": {
+    "x": 537,
+    "y": 719
+  },
+  "goal": {
+    "x": 512,
+    "y": 512
+  },
+  "source": {
+    "product": "NAC_DTM_APOLLO15",
+    "url": "https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_DTM_APOLLO15",
+    "download": "http://lroc.sese.asu.edu/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/SDP/NAC_DTM/APOLLO15/NAC_DTM_APOLLO15.TIF",
+    "factsSource": "LROC post \"Spacecraft Related Coordinates - 2016 Update\", https://lroc.im-ldi.com/images/938"
+  },
+  "license": "LROC Reduced Data Record (RDR) products available through the NASA Planetary Data System (PDS) are in the public domain.",
+  "credit": "NASA/GSFC/Arizona State University",
+  "nodataFilledFraction": 0.0,
+  "notes": "Shaded rendering of real LRO NAC DTM elevation (not a photo). Crop is a 2.05km square at native 2 m/px, centered on the pixel of the Apollo 15 Lunar Roving Vehicle's final parked position (a surveyed coordinate from LROC post \"Spacecraft Related Coordinates - 2016 Update\", not a proxy). Goal is the parked rover (\"Apollo 15 rover (parked 1971)\"); spawn is the point 400-900m away (a smaller search radius than apollo17's 1.5-3km: this crop is only 2.05km square at native 2 m/px, so a 1.5km+ radius does not fit) whose straight drivable line to the rover has the lowest max slope, searched across all compass bearings (no sourced approach direction for the LRV's final short hop back to the parking spot, so a bearing is not fabricated -- the algorithmically best-drivable direction is used instead). mask.bin marks nodata-filled cells (rendered as a hatched no-data texture in albedo.jpg/preview.png); spawn and goal are kept >= 20px clear of them. The rover model in-engine is an illustrative period-accurate silhouette, not a survey model.",
+  "maskFile": "mask.bin",
+  "maskMeaning": "1 = no orbital data (filled), treat as impassable",
+  "siteName": "Hadley-Apennine valley, Apollo 15 site",
+  "goalLabel": "Apollo 15 rover (parked 1971)",
+  "goalLatLon": {
+    "lat": 26.13174,
+    "lon": 3.63803
+  },
+  "spawnLatLon": {
+    "lat": 26.11809,
+    "lon": 3.63986
+  },
+  "lrvElevCitedM": -1928.0,
+  "lrvUncertaintyM": 0.5,
+  "spawnGoalDistanceM": 417.0,
+  "lineSlopeDegMax": 10.13,
+  "lineSlopeDegMean": 4.05
+}
