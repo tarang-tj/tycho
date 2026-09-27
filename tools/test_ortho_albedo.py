@@ -6,6 +6,7 @@ Run: python3 -m unittest discover -s tools -p "test_*.py"
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
 import unittest
@@ -14,7 +15,8 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from ortho_albedo import _anchored_rowcol_to_latlon, _best_ncc_offset, _to_uint8_stretch
+from ortho_albedo import (ORTHO_PRODUCTS, _anchored_rowcol_to_latlon, _best_ncc_offset,
+                          _to_uint8_stretch, ortho_url)
 from pds_img import OrthoLabel, parse_label
 
 # Saved verbatim (CRLF normalized to LF) from the first 8000 bytes of
@@ -101,6 +103,170 @@ END_OBJECT = IMAGE
 
 END
 """
+
+
+# Saved verbatim (CRLF normalized to LF, trailing record padding after END
+# dropped) from the first 8000 bytes of
+# https://lroc.im-ldi.com/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/SDP/NAC_DTM/APOLLO15/NAC_DTM_APOLLO15_M111571816_2M.IMG
+# (HTTP Range fetch, 2026-09-26). Wave 3 step 2: the ortho paired with
+# assets/apollo15/. Unlike the four wave-A orthos it is PC_REAL float32
+# with a hex (16#...#) ISIS special-pixel CORE_NULL.
+APOLLO15_ORTHO_LABEL = """PDS_VERSION_ID            = PDS3
+
+/* The source image data definition. */
+RECORD_TYPE   = FIXED_LENGTH
+RECORD_BYTES  = 10220
+FILE_RECORDS  = 14312
+LABEL_RECORDS = 1
+^IMAGE        = 2
+
+/* Identification Information  */
+DATA_SET_ID               = "LRO-L-LROC-5-RDR-V1.0"
+DATA_SET_NAME             = "LRO MOON LROC 5 RDR V1.0"
+VOLUME_ID                 = "LROLRC_2001"
+PRODUCER_INSTITUTION_NAME = "ARIZONA STATE UNIVERSITY"
+PRODUCER_ID               = LRO_LROC_TEAM
+PRODUCER_FULL_NAME        = "MARK ROBINSON, PH.D"
+PRODUCT_ID                = NAC_DTM_APOLLO15_M111571816_2M
+PRODUCT_VERSION_ID        = "v1.9"
+PRODUCT_TYPE              = RDR
+INSTRUMENT_HOST_NAME      = "LUNAR RECONNAISSANCE ORBITER"
+INSTRUMENT_HOST_ID        = LRO
+INSTRUMENT_NAME           = "LUNAR RECONNAISSANCE ORBITER CAMERA"
+INSTRUMENT_ID             = LROC
+TARGET_NAME               = MOON
+MISSION_PHASE_NAME        = "NOMINAL MISSION"
+RATIONALE_DESC            = "Created to enable lunar science and exploration
+                            activities"
+SOFTWARE_NAME             = "ISIS 3.4.3, 3.8.1, 3.4.4.5390, 3.4.11.6414 with
+                            SER enhancements | SOCET SET v5.5 (c) BAE Systems"
+
+/* Time Parameters */
+START_TIME                   = 2009-10-30T19:55:49
+STOP_TIME                    = 2009-10-30T19:56:07
+SPACECRAFT_CLOCK_START_COUNT = "N/A"
+SPACECRAFT_CLOCK_STOP_COUNT  = "N/A"
+PRODUCT_CREATION_TIME        = 2020-10-10T16:00:55
+
+/* NOTE:                                                                   */
+/* This raster image is composed of a set of pixels that represent finite  */
+/* areas, and not discrete points.  The center of the upper left pixel is  */
+/* defined as line and sample (1.0,1.0). The                               */
+/* [LINE,SAMPLE]_PROJECTION_OFFSET elements are the pixel offset from line */
+/* and sample (1.0,1.0) to the map projection origin (defined by the       */
+/* CENTER_LATITUDE and CENTER_LONGITUDE elements).  These offset values    */
+/* are positive when the map projection origin is to the right or below    */
+/* the center of the upper left pixel. This definition was adopted in      */
+/* November 2011 by the LROC team.                                         */
+
+OBJECT = IMAGE_MAP_PROJECTION
+    ^DATA_SET_MAP_PROJECTION     = "DSMAP.CAT"
+    MAP_PROJECTION_TYPE          = EQUIRECTANGULAR
+    PROJECTION_LATITUDE_TYPE     = PLANETOCENTRIC
+    A_AXIS_RADIUS                = 1737.4 <KM>
+    B_AXIS_RADIUS                = 1737.4 <KM>
+    C_AXIS_RADIUS                = 1737.4 <KM>
+    COORDINATE_SYSTEM_NAME       = PLANETOCENTRIC
+    POSITIVE_LONGITUDE_DIRECTION = EAST
+    KEYWORD_LATITUDE_TYPE        = PLANETOCENTRIC
+    /* NOTE:  CENTER_LATITUDE and CENTER_LONGITUDE describe the location   */
+    /* of the center of projection, which is not necessarily equal to the  */
+    /* location of the center point of the image.                          */
+    CENTER_LATITUDE              = 26.0 <DEG>
+    CENTER_LONGITUDE             = 180.0 <DEG>
+    LINE_FIRST_PIXEL             = 1
+    LINE_LAST_PIXEL              = 14311
+    SAMPLE_FIRST_PIXEL           = 1
+    SAMPLE_LAST_PIXEL            = 2555
+    MAP_PROJECTION_ROTATION      = 0.0 <DEG>
+    MAP_RESOLUTION               = 15161.67521207 <PIX/DEG>
+    MAP_SCALE                    = 2.0000000000006 <METERS/PIXEL>
+    MAXIMUM_LATITUDE             = 26.53608486 <DEG>
+    MINIMUM_LATITUDE             = 25.5921918 <DEG>
+    EASTERNMOST_LONGITUDE        = 3.69012653 <DEG>
+    WESTERNMOST_LONGITUDE        = 3.50268023 <DEG>
+    LINE_PROJECTION_OFFSET       = 402331.5 <PIXEL>
+    SAMPLE_PROJECTION_OFFSET     = 2405168.5 <PIXEL>
+END_OBJECT = IMAGE_MAP_PROJECTION
+
+OBJECT = IMAGE
+    DESCRIPTION                = "Apollo 15 Landing Site orthoimage from NAC
+                                 M111571816 L/R at 2.00 m/px. For more info,
+                                 see [HENRIKSENETAL2017]."
+    LINES                      = 14311
+    LINE_SAMPLES               = 2555
+    SAMPLE_TYPE                = PC_REAL
+    SAMPLE_BITS                = 32
+    SAMPLE_BIT_MASK            = 2#11111111111111111111111111111111#
+    CORE_NULL                  = 16#FF7FFFFB#
+    CORE_LOW_REPR_SATURATION   = 16#FF7FFFFC#
+    CORE_LOW_INSTR_SATURATION  = 16#FF7FFFFD#
+    CORE_HIGH_REPR_SATURATION  = 16#FF7FFFFF#
+    CORE_HIGH_INSTR_SATURATION = 16#FF7FFFFE#
+    BAND_STORAGE_TYPE          = BAND_SEQUENTIAL
+    BANDS                      = 1
+    FILTER_NAME                = BROADBAND
+END_OBJECT = IMAGE
+
+END
+"""
+
+
+class Apollo15FloatLabelTests(unittest.TestCase):
+    def setUp(self):
+        self.label = OrthoLabel.from_text(APOLLO15_ORTHO_LABEL)
+
+    def test_parses_hex_core_null_as_integer_bit_pattern(self):
+        self.assertEqual(parse_label(APOLLO15_ORTHO_LABEL)["CORE_NULL"], 0xFF7FFFFB)
+
+    def test_float_fields(self):
+        self.assertEqual(self.label.product_id, "NAC_DTM_APOLLO15_M111571816_2M")
+        self.assertEqual(self.label.dtype, "<f4")
+        self.assertEqual((self.label.lines, self.label.samples), (14311, 2555))
+        self.assertEqual(self.label.image_byte_offset, 10220)
+        # ISIS NULL for 32-bit float, decoded from bit pattern 16#FF7FFFFB#.
+        self.assertAlmostEqual(self.label.core_null / -3.4028226550889045e38, 1.0, places=9)
+
+    def test_nodata_mask_flags_every_isis_special_and_nonfinite_only(self):
+        specials = np.array([0xFF7FFFFB, 0xFF7FFFFC, 0xFF7FFFFD, 0xFF7FFFFE, 0xFF7FFFFF],
+                            dtype="<u4").view("<f4").astype(np.float64)
+        arr = np.concatenate([specials, [np.nan, 0.0, 0.05, 0.3, -0.01]])
+        mask = self.label.nodata_mask(arr)
+        self.assertEqual(mask.tolist(), [True] * 6 + [False] * 4)
+
+    def test_integer_nodata_mask_is_exact_core_null(self):
+        int_label = OrthoLabel.from_text(APOLLO17_ORTHO_LABEL)
+        mask = int_label.nodata_mask(np.array([-32768.0, -32767.0, 0.0, 120.0]))
+        self.assertEqual(mask.tolist(), [True, False, False, False])
+
+    def test_corner_latlon_matches_labels_own_stated_bounds(self):
+        lat0, lon0 = self.label.rowcol_to_latlon(0, 0)
+        lat1, lon1 = self.label.rowcol_to_latlon(self.label.lines - 1, self.label.samples - 1)
+        self.assertAlmostEqual(lat0, self.label.max_lat, delta=0.001)
+        self.assertAlmostEqual(lon0, self.label.west_lon, delta=0.001)
+        self.assertAlmostEqual(lat1, self.label.min_lat, delta=0.001)
+        self.assertAlmostEqual(lon1, self.label.east_lon, delta=0.001)
+
+
+class SiteRegistrationTests(unittest.TestCase):
+    def test_new_sites_registered_with_verified_products(self):
+        base = ("https://lroc.im-ldi.com/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/"
+                "DATA/SDP/NAC_DTM")
+        self.assertEqual(ortho_url("apollo15"),
+                         f"{base}/APOLLO15/NAC_DTM_APOLLO15_M111571816_2M.IMG")
+        self.assertEqual(ortho_url("change3"),
+                         f"{base}/CHANGE3/NAC_DTM_CHANGE3_M1144922100_5M.IMG")
+
+    def test_every_registered_site_has_shipped_sidecar_and_capped_jpg(self):
+        assets = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets")
+        for site, (_folder, product) in ORTHO_PRODUCTS.items():
+            with self.subTest(site=site):
+                with open(os.path.join(assets, site, "albedo-ortho.json")) as f:
+                    sidecar = json.load(f)
+                self.assertEqual(sidecar["product"], product)
+                self.assertEqual(sidecar["productUrl"], ortho_url(site))
+                self.assertLessEqual(os.path.getsize(os.path.join(assets, site, "albedo-ortho.jpg")),
+                                     400_000)
 
 
 class ParseLabelTests(unittest.TestCase):
