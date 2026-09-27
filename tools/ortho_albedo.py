@@ -21,29 +21,15 @@ GeoTIFF header by re-running the same peak-finding steps tools/sites/
 moon.py already runs (imported, not duplicated logic) against a freshly
 downloaded copy of the DTM.
 
-Final alignment is never just assumed: for every site this module renders
-a hillshade from the site's own height.bin and cross-correlates it against
-the fetched ortho crop. LROC's DTM and orthomosaic for the same site are
-each independently bundle-adjusted, so even an exactly-computed crop
-window can carry a real few-pixel relative offset between the two products
--- confirmed this session on Lunokhod 2 (an 11px/55m north-south offset
-that a wide-search NCC pass measures cleanly, ncc=0.65, and a correction
-pass then confirms corrects to 0px residual). The pipeline therefore does
-a wide (+/-16px) search first, shifts the sampling grid by the measured
-offset, and re-confirms a narrow (+/-2px) residual on the corrected crop
--- that confirmed residual, not a blind first guess, is what must be
-<=2px. Two of the four sites cannot pass that numeric check even though
-their placement is geometrically exact (see above) and their crops read
-as visibly well-aligned in the saved preview PNGs: Von Karman crater
-(change4) is flat enough (71m relief over a 5.12km crop) that its
-hillshade carries essentially no correlatable texture at any search width
-or smoothing (peak |ncc| stays under 0.05 and never converges to an
-interior optimum even at +/-16px raw or heavily Gaussian-blurred); Tycho
-("moon") is steep enough that a fixed synthetic-sun hillshade likely just
-disagrees with the real photo's unknown illumination angle (see
-_exact_tycho_rowcol_to_latlon's docstring). Both are reported as
-INCONCLUSIVE rather than forcing a correction fit to a weak/noisy peak,
-and ship their analytically-placed (uncorrected) crop.
+Alignment: each ortho and its DTM share one equirectangular grid (identical
+LINES/LINE_SAMPLES and projection offsets in the PDS label and the GeoTIFF),
+so the analytic placement above is the alignment and it is shipped as is.
+A normalized cross-correlation against a fixed-sun hillshade is recorded as
+a diagnostic only. It is never applied: a synthetic sun that does not match
+the photo's real illumination biases the peak. An earlier version applied
+it and moved the Lunokhod and Chang'e 3 photos 9-11 px (about 50 m) off
+their terrain; an independent sun-azimuth sweep showed the analytic
+placement aligned at dy=0 once the hillshade sun matched the photo.
 """
 from __future__ import annotations
 
@@ -75,10 +61,7 @@ MEASUREMENTS_DIR = os.path.expanduser(
 
 MOON_RADIUS_M = 1737400.0  # A_AXIS_RADIUS in every label checked this session (1737.4 km)
 OUT_PX = 1024
-NCC_WIDE_SEARCH_PX = 16  # first pass: measures any real DTM<->ortho product co-registration offset
-NCC_CONFIRM_SEARCH_PX = 4  # second pass: confirms the corrected crop's residual offset
-NCC_MAX_OFFSET_PX = 2
-NCC_COHERENCE_MIN = 0.15  # below this peak |ncc|, the hillshade has no measurable shared texture
+NCC_WIDE_SEARCH_PX = 16  # diagnostic search window only; the result is recorded, never applied
 FETCH_PAD_PX = NCC_WIDE_SEARCH_PX + 4
 MAX_JPEG_BYTES = 400_000
 
@@ -219,11 +202,8 @@ def _fetch_ortho_crop(site: str, rowcol_to_latlon, shade_1024: np.ndarray,
                        session: requests.Session) -> tuple[np.ndarray, dict]:
     """Fetches the label and the smallest ortho-pixel window covering the
     site's 1024x1024 crop (+ FETCH_PAD_PX margin), fills any nodata in that
-    window, samples the crop at its analytically-placed coordinates, then
-    (see module docstring) runs a wide NCC search against shade_1024 and
-    -- unless the hillshade has no measurable texture (change4) -- shifts
-    the sampling grid by the measured offset and re-samples, confirming
-    the corrected residual is within NCC_MAX_OFFSET_PX. Returns
+    window and samples the crop at its analytically-placed coordinates. A
+    fixed-sun NCC is recorded as a diagnostic and never applied. Returns
     (final_crop_values, alignment_and_label_meta)."""
     url = ortho_url(site)
     label_text = fetch_label_text(url, session=session)
@@ -253,40 +233,23 @@ def _fetch_ortho_crop(site: str, rowcol_to_latlon, shade_1024: np.ndarray,
     local_sample = sample - win_col0
     nominal = map_coordinates(filled, [local_line, local_sample], order=1, mode="nearest")
 
-    wide_dy, wide_dx, wide_ncc = _best_ncc_offset(shade_1024, nominal, NCC_WIDE_SEARCH_PX)
-    coherent = abs(wide_ncc) >= NCC_COHERENCE_MIN and max(abs(wide_dy), abs(wide_dx)) < NCC_WIDE_SEARCH_PX
-    print(f"  wide-search NCC: dy={wide_dy} dx={wide_dx} ncc={wide_ncc:.3f} "
-          f"({'coherent, correcting' if coherent else 'INCONCLUSIVE (no measurable texture), shipping uncorrected'})")
-
-    if coherent:
-        corrected = map_coordinates(filled, [local_line - wide_dy, local_sample - wide_dx],
-                                     order=1, mode="nearest")
-        confirm_dy, confirm_dx, confirm_ncc = _best_ncc_offset(shade_1024, corrected, NCC_CONFIRM_SEARCH_PX)
-        if max(abs(confirm_dy), abs(confirm_dx)) > NCC_MAX_OFFSET_PX:
-            raise ValueError(f"{site}: corrected NCC residual {max(abs(confirm_dy), abs(confirm_dx))}px "
-                              f"exceeds {NCC_MAX_OFFSET_PX}px accept threshold "
-                              f"(pre-correction dy={wide_dy},dx={wide_dx}; residual dy={confirm_dy},dx={confirm_dx})")
-        final = corrected
-        alignment = {
-            "coherent": True,
-            "rawOffsetPx": {"dy": wide_dy, "dx": wide_dx},
-            "rawNcc": round(wide_ncc, 4),
-            "appliedCorrectionPx": {"dy": -wide_dy, "dx": -wide_dx},
-            "confirmedResidualOffsetPx": {"dy": confirm_dy, "dx": confirm_dx},
-            "confirmedResidualNcc": round(confirm_ncc, 4),
-        }
-        print(f"  confirmed residual after correction: dy={confirm_dy} dx={confirm_dx} "
-              f"(ncc={confirm_ncc:.3f}); accept <= {NCC_MAX_OFFSET_PX}px")
-    else:
-        final = nominal
-        alignment = {
-            "coherent": False,
-            "reason": "hillshade has insufficient relief texture to measure a reliable offset "
-                      "(peak |ncc| < NCC_COHERENCE_MIN, or best offset never converged inside the "
-                      "search window); shipped at the analytically-computed placement, uncorrected",
-            "rawOffsetPx": {"dy": wide_dy, "dx": wide_dx},
-            "rawNcc": round(wide_ncc, 4),
-        }
+    # The ortho and its DTM share one equirectangular grid (same LINES/
+    # LINE_SAMPLES and projection offsets in the label and the GeoTIFF), so
+    # the analytic placement above IS the alignment. The NCC below is a
+    # diagnostic only and is never applied: its fixed synthetic sun does not
+    # match each photo's real illumination, and on Lunokhod and Chang'e 3 it
+    # reported a 9-11 px "offset" that, when applied, moved the photo about
+    # 50 m off its terrain (independent verifier, sun-azimuth sweep: the
+    # analytic placement aligns at dy=0 when the hillshade sun matches).
+    diag_dy, diag_dx, diag_ncc = _best_ncc_offset(shade_1024, nominal, NCC_WIDE_SEARCH_PX)
+    print(f"  diagnostic NCC vs fixed-sun hillshade: dy={diag_dy} dx={diag_dx} ncc={diag_ncc:.3f} (not applied)")
+    final = nominal
+    alignment = {
+        "method": "analytic: ortho and DTM share one equirectangular grid; crop placed from the site's own DTM crop geometry",
+        "correctionApplied": False,
+        "diagnosticFixedSunNcc": {"dy": diag_dy, "dx": diag_dx, "ncc": round(diag_ncc, 4),
+                                  "note": "fixed-sun hillshade vs photo; biased by illumination mismatch, not applied"},
+    }
 
     label_meta = {
         "productId": label.product_id,
@@ -383,14 +346,7 @@ def process_site(site: str) -> dict:
         "cropWidthPx": OUT_PX,
         "cropHeightPx": OUT_PX,
         "cropMetersPerPixel": mpp,
-        "alignmentCheck": {
-            "method": "normalized cross-correlation vs a hillshade rendered from this site's own "
-                      "height.bin; wide (+/-16px) search measures any real DTM<->ortho product "
-                      "offset, then (if coherent) the crop is shifted and a narrow (+/-2px) "
-                      "confirm search checks the corrected residual",
-            "acceptMaxOffsetPx": NCC_MAX_OFFSET_PX,
-            **alignment,
-        },
+        "alignmentCheck": alignment,
         "nodataFilledFractionInFetchWindow": label_meta["nodataFilledFractionInFetchWindow"],
         "renderNote": ("Raw DN linearly stretched (1st-99th percentile) to 8-bit for display; "
                        "not radiometrically calibrated to I/F reflectance (the label's "

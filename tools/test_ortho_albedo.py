@@ -403,3 +403,19 @@ class AnchoredRowColToLatLonTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ShippedSidecarsNeverApplyACorrection(unittest.TestCase):
+    """A fixed-sun NCC once moved two photos ~50 m off their DTM. The ortho
+    and its DTM share one grid, so every shipped crop must be the analytic
+    placement: no sidecar may record an applied shift."""
+
+    def test_every_shipped_sidecar_is_uncorrected(self):
+        import glob, json, os
+        root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets")
+        paths = sorted(glob.glob(os.path.join(root, "*", "albedo-ortho.json")))
+        self.assertGreaterEqual(len(paths), 6)
+        for p in paths:
+            check = json.load(open(p))["alignmentCheck"]
+            self.assertIs(check.get("correctionApplied"), False, p)
+            self.assertNotIn("appliedCorrectionPx", check, p)

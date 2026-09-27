@@ -15,23 +15,14 @@
   "cropHeightPx": 1024,
   "cropMetersPerPixel": 4.9999999999999,
   "alignmentCheck": {
-    "method": "normalized cross-correlation vs a hillshade rendered from this site's own height.bin; wide (+/-16px) search measures any real DTM<->ortho product offset, then (if coherent) the crop is shifted and a narrow (+/-2px) confirm search checks the corrected residual",
-    "acceptMaxOffsetPx": 2,
-    "coherent": true,
-    "rawOffsetPx": {
+    "method": "analytic: ortho and DTM share one equirectangular grid; crop placed from the site's own DTM crop geometry",
+    "correctionApplied": false,
+    "diagnosticFixedSunNcc": {
       "dy": -1,
-      "dx": -1
-    },
-    "rawNcc": 0.4765,
-    "appliedCorrectionPx": {
-      "dy": 1,
-      "dx": 1
-    },
-    "confirmedResidualOffsetPx": {
-      "dy": 0,
-      "dx": 0
-    },
-    "confirmedResidualNcc": 0.4769
+      "dx": -1,
+      "ncc": 0.4765,
+      "note": "fixed-sun hillshade vs photo; biased by illumination mismatch, not applied"
+    }
   },
   "nodataFilledFractionInFetchWindow": 0.0,
   "renderNote": "Raw DN linearly stretched (1st-99th percentile) to 8-bit for display; not radiometrically calibrated to I/F reflectance (the label's SCALING_FACTOR/OFFSET do that, but a display texture doesn't need it).",

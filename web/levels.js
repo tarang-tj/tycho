@@ -49,10 +49,9 @@ export const LEVELS = {
     key: "tycho", assetKey: "moon", planet: "moon", mode: "live",
     delay: { type: "direct", oneWaySec: 1.28 },
     label: "Tycho", siteLabel: "Tycho central peak",
-    // A2 kill (plan-wave3.md): the NAC orthophoto stays OFF here. Its own
-    // sidecar records the DTM alignment check as not coherent (16 px raw
-    // offset, NCC -0.007), and in the 1280x800 A/B the photo's baked
-    // shadow deepened the already-shadowed peak face with no visible gain.
+    // A2 kill (plan-wave3.md): the NAC orthophoto stays OFF here. In the
+    // 1280x800 A/B the photo's baked shadow deepened the already-shadowed
+    // peak face with no visible gain.
     orthoAlbedo: false,
     briefLines: BRIEFS.tycho,
   },

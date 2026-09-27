@@ -8,10 +8,10 @@ crewed/robotic-missions coordinates table, rows:
   "Yutu Rover | 44.1208 | 340.4878 | -2630 | 12.9"
 (lat/lon in degrees, elevation in meters, uncertainty in meters; mean
 Earth/polar axis (ME) frame, GLD100 shape model, same table apollo17.py and
-change4.py's cross-check both cite). Chang'e 3 landed on Mare Imbrium's
-near side on 14 December 2013 and deployed the Yutu rover the same day
-(mission dates are common knowledge, not independently re-sourced this
-session beyond the LROC post's own framing of the mission as historical).
+change4.py's cross-check both cite). Chang'e 3 landed on Mare Imbrium on
+14 December 2013 (LROC post 637, https://lroc.im-ldi.com/images/637:
+"Chang'e 3 landed on Mare Imbrium (Sea of Rains) just east of a 450 m
+diameter impact crater on 14 December 2013.").
 
 The DTM product page (https://data.lroc.im-ldi.com/lroc/view_rdr/
 NAC_DTM_CHANGE3, fetched this session) lists Pixel Scale 5 m/px and

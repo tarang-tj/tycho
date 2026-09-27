@@ -7,10 +7,8 @@ https://lroc.im-ldi.com/images/938 -- crewed-missions coordinates table,
 row "Apollo 15 LRV | 26.13174 | 3.63803 | -1928 | 0.5" (mean observed
 lat/lon in degrees, elevation in meters, uncertainty in meters; mean
 Earth/polar axis (ME) frame, GLD100 shape model). Apollo 15 landed 30 July
-1971 and its final surface EVA (during which the rover was left parked)
-was 2 August 1971 (mission dates are common knowledge, not independently
-re-sourced this session beyond the LROC post's own framing of the mission
-as historical).
+1971 and was the first mission to use the Lunar Roving Vehicle (NSSDC
+1971-063A, https://nssdc.gsfc.nasa.gov/nmc/spacecraft/display.action?id=1971-063A).
 
 DTM product confirmed this session: data.lroc.im-ldi.com/lroc/view_rdr/
 NAC_DTM_APOLLO15 -- 2 m/px, footprint 25.59-26.54N 3.50-3.69E, TIF
