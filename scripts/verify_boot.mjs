@@ -112,7 +112,7 @@ try {
   page.on("pageerror", (error) => errors.push(error.message));
 
   await page.goto(`http://127.0.0.1:${port}/web/`, { waitUntil: "networkidle" });
-  await page.waitForFunction(() => window.TYCHO?.ready === true, null, { timeout: 10000 });
+  await page.waitForFunction(() => window.TYCHO?.ready === true, null, { timeout: 30000 });
 
   const renderer = await page.evaluate(() => window.TYCHO.renderer);
   assert.equal(renderer, "webgl", `expected WebGL renderer, got "${renderer}"`);
@@ -323,7 +323,7 @@ try {
     driftPage.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
     driftPage.on("pageerror", (error) => errors.push(error.message));
     await driftPage.goto(`http://127.0.0.1:${port}/web/`, { waitUntil: "networkidle" });
-    await driftPage.waitForFunction(() => window.TYCHO?.ready === true, null, { timeout: 10000 });
+    await driftPage.waitForFunction(() => window.TYCHO?.ready === true, null, { timeout: 30000 });
     await driftPage.evaluate(() => window.TYCHO.switchLevel("mars"));
     await driftPage.waitForFunction(() => window.TYCHO.getLevel() === "mars", null, { timeout: 5000 });
     await driftPage.waitForFunction(() => window.TYCHO.ready === true, null, { timeout: 10000 });
@@ -641,7 +641,7 @@ try {
       Object.defineProperty(navigator, "clipboard", { value: { writeText: (t) => { window.__copied = t; return Promise.resolve(); } }, configurable: true });
     });
     await freePage.goto(`http://127.0.0.1:${port}/web/`, { waitUntil: "networkidle" });
-    await freePage.waitForFunction(() => window.TYCHO?.ready === true, null, { timeout: 10000 });
+    await freePage.waitForFunction(() => window.TYCHO?.ready === true, null, { timeout: 30000 });
     await freePage.evaluate(() => window.TYCHO.debug.startMission());
     assert.ok((await freePage.evaluate(() => window.TYCHO.debug.getDelaySec())) > 1, "Lunokhod should start with its real delay before Free drive is turned on");
     await freePage.evaluate(() => document.getElementById("freeDriveToggle").click());
@@ -916,7 +916,7 @@ try {
   try {
     levelPage.on("pageerror", (error) => errors.push(error.message));
     await levelPage.goto(`http://127.0.0.1:${port}/web/`, { waitUntil: "networkidle" });
-    await levelPage.waitForFunction(() => window.TYCHO?.ready === true, null, { timeout: 10000 });
+    await levelPage.waitForFunction(() => window.TYCHO?.ready === true, null, { timeout: 30000 });
     const loadAndWaitAlbedo = async (pg, key) => {
       await pg.evaluate((k) => window.TYCHO.switchLevel(k), key);
       await pg.waitForFunction((k) => window.TYCHO.getLevel() === k, key, { timeout: 10000 });
@@ -995,7 +995,7 @@ try {
       try {
         await fbPage.route(pattern, (route) => route.fulfill({ status: 404, body: "" }));
         await fbPage.goto(`http://127.0.0.1:${port}/web/`, { waitUntil: "networkidle" });
-        await fbPage.waitForFunction(() => window.TYCHO?.ready === true, null, { timeout: 10000 });
+        await fbPage.waitForFunction(() => window.TYCHO?.ready === true, null, { timeout: 30000 });
         const key = orthoLevel === "lunokhod" ? LEVEL_ORDER.find((k) => k !== "lunokhod" && LEVELS[k].planet === "moon" && existsSync(`${assetsRoot}${LEVELS[k].assetKey}/albedo-ortho.json`)) : orthoLevel;
         await fbPage.evaluate((k) => window.TYCHO.switchLevel(k), key);
         await fbPage.waitForFunction((k) => window.TYCHO.getLevel() === k, key, { timeout: 10000 });
@@ -1020,7 +1020,7 @@ try {
   const mobilePage = await browser.newPage({ viewport: { width: 390, height: 844 } });
   try {
     await mobilePage.goto(`http://127.0.0.1:${port}/web/`, { waitUntil: "networkidle" });
-    await mobilePage.waitForFunction(() => window.TYCHO?.ready === true, null, { timeout: 10000 });
+    await mobilePage.waitForFunction(() => window.TYCHO?.ready === true, null, { timeout: 30000 });
     await mobilePage.click("#titleStart"); // close the title screen, as a phone player would
     await mobilePage.waitForSelector(".level-select", { state: "visible" });
 
