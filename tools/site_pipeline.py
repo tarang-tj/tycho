@@ -7,7 +7,9 @@ existing import of `site_pipeline` keeps working unchanged.
 """
 from __future__ import annotations
 
+from sites.apollo15 import process_apollo15
 from sites.apollo17 import process_apollo17
+from sites.change3 import process_change3
 from sites.change4 import process_change4
 from sites.common import ASSETS_DIR, CACHE_DIR, MIN_CLEAR_OF_MASK_PX, write_body
 from sites.lunokhod import process_lunokhod
@@ -17,4 +19,5 @@ from sites.moon import process_moon
 __all__ = [
     "ASSETS_DIR", "CACHE_DIR", "MIN_CLEAR_OF_MASK_PX", "write_body",
     "process_moon", "process_mars", "process_lunokhod", "process_change4", "process_apollo17",
+    "process_apollo15", "process_change3",
 ]

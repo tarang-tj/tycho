@@ -17,7 +17,7 @@ export const TRUE_COLOR = "#ffffff";
 export const BELIEVED_COLOR = "#ff5ec4";
 const OFFSET_COLOR = "#ffe066";
 
-function renderElevationBackground(ctx, terrain, viewMinX, viewMinY, extentPx, rect) {
+export function renderElevationBackground(ctx, terrain, viewMinX, viewMinY, extentPx, rect) {
   const grid = 32;
   const img = ctx.createImageData(grid, grid);
   const samples = new Float32Array(grid * grid);

@@ -11,7 +11,9 @@
 //
 // Each value is the bot's measured arrival time ROUNDED DOWN to the nearest
 // whole second (measured to 0.05s: lunokhod 1681.6, change4 1696.3,
-// apollo17 1199.0, tycho 826.4). Rounding down means par never exceeds the
+// apollo17 1199.0, tycho 826.4; wave 3, same bot and harness, which
+// re-measured apollo17 at 1199.05: apollo15 333.45, change3 1618.55).
+// Rounding down means par never exceeds the
 // bot's own time, so the bot can never "beat" its own par (par.test.mjs
 // asserts PAR_SEC[level] <= the bot's measured time) - only makes the
 // strictly-less-than beat-par bar a hair harder, never easier.
@@ -20,6 +22,8 @@ export const PAR_SEC = {
   change4: 1696,
   apollo17: 1199,
   tycho: 826,
+  apollo15: 333,
+  change3: 1618,
 };
 
 // Max-slope objective threshold, degrees. Every value sits below rover-sim's
@@ -32,6 +36,9 @@ export const PAR_SEC = {
 //     mostly gentle) -> 18deg leaves room for live driving, still a real cap.
 //   change4: bot route tops out ~6.2deg (Von Karman's floor is flat) -> 10deg.
 //   apollo17: bot route tops out ~11.0deg (Taurus-Littrow valley floor) -> 15deg.
+//   apollo15: bot route tops out ~16.5deg (2 m terrain resolves small
+//     crater walls the 5 m sites smooth out) -> 20deg.
+//   change3: bot route tops out ~6.6deg (Mare Imbrium plains) -> 10deg.
 //   tycho: bot route tops out ~26.2deg climbing the central peak -> 28deg,
 //     just under the 30deg planning margin used everywhere else in this repo
 //     (tests/playability.test.mjs PLANNING_MARGIN_DEG) and clearly under the
@@ -41,9 +48,11 @@ export const MAX_SLOPE_DEG = {
   change4: 10,
   apollo17: 15,
   tycho: 28,
+  apollo15: 20,
+  change3: 10,
 };
 
-const LIVE_LEVEL_KEYS = new Set(["lunokhod", "change4", "apollo17", "tycho"]);
+const LIVE_LEVEL_KEYS = new Set(["lunokhod", "change4", "apollo17", "tycho", "apollo15", "change3"]);
 
 function formatMinSec(timeSec) {
   const total = Math.max(0, Math.round(timeSec));

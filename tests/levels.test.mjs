@@ -110,3 +110,38 @@ test("main.js loads terrain and scene options from level.assetKey/planet, not a 
   const src = webSrc("main.js");
   assert.doesNotMatch(src, /level\.body\b/, "main.js must not read a level.body field (use level.assetKey/level.planet)");
 });
+
+// --- Wave 3: Apollo 15 and Chang'e 3 ---
+
+test("apollo15 and change3 are live near-side levels on the direct 1.28 s delay, with their landmarks", () => {
+  for (const key of ["apollo15", "change3"]) {
+    assert.ok(LEVEL_ORDER.includes(key), `${key} must be in LEVEL_ORDER`);
+    assert.equal(LEVELS[key].mode, "live");
+    assert.equal(resolveDelaySec(LEVELS[key], {}), 1.28);
+  }
+  assert.equal(LEVELS.apollo15.landmarkKind, "lrv");
+  assert.equal(LEVELS.change3.landmarkKind, "change3");
+});
+
+test("change3's stand-in lander says so on screen (A6) and its copy never claims a resemblance", () => {
+  assert.match(LEVELS.change3.landmarkNote, /model approximated/i);
+  const copy = [...LEVELS.change3.briefLines, LEVELS.change3.arrivalLine, LEVELS.change3.landmarkNote].join(" ");
+  assert.doesNotMatch(copy, /similar|identical|same design|looks like|twin/i);
+});
+
+test("the new levels' brief coordinates match their shipped meta.json goal (A9: no drift from the sourced data)", () => {
+  for (const key of ["apollo15", "change3"]) {
+    const meta = JSON.parse(readFileSync(fileURLToPath(new URL(`../assets/${key}/meta.json`, import.meta.url)), "utf8"));
+    const text = LEVELS[key].briefLines.join(" ");
+    assert.ok(text.includes(`${meta.goalLatLon.lat}N`), `${key}: brief must quote the goal latitude ${meta.goalLatLon.lat}`);
+    assert.ok(text.includes(`${meta.goalLatLon.lon}E`), `${key}: brief must quote the goal longitude ${meta.goalLatLon.lon}`);
+  }
+});
+
+test("no user-facing level copy uses an em dash", () => {
+  for (const key of LEVEL_ORDER) {
+    const level = LEVELS[key];
+    const copy = [...level.briefLines, level.arrivalLine ?? "", level.landmarkNote ?? "", level.label, level.siteLabel].join(" ");
+    assert.doesNotMatch(copy, /\u2014/, `${key}: em dash in user-facing copy`);
+  }
+});

@@ -21,6 +21,8 @@ import { createDriftModel, DRIFT_PCT } from "./drift.js";
 import { runDryRun } from "./dry-run.js";
 import { evaluateObjectives } from "./objectives.js";
 import { freeDriveApplies, runDelaySec, FREE_DRIVE_NOTE, FREE_DRIVE_ENDCARD_NOTE } from "./free-drive.js";
+import { pickAlbedo } from "./albedo-source.js";
+import { summarizeHistoric } from "./historic-reveal.js";
 import { createMarsAutopilot, finalizeMarsLegOutcomes, pickRealRunSeed, planSignature, DRY_RUN_N, DRY_RUN_BASE_SEED, createMarsTrackReveal } from "./mars-run.js";
 
 const FIXED_DT = 1 / 60;
@@ -32,6 +34,7 @@ const el = {
   fallback: document.getElementById("sceneFallback"),
   terrainBanner: document.getElementById("terrainBanner"),
   noDataLegend: document.getElementById("noDataLegend"),
+  landmarkNote: document.getElementById("landmarkNote"),
   delayNote: document.getElementById("delayNote"),
   freeDriveToggle: document.getElementById("freeDriveToggle"),
   controlsHelp: document.querySelector(".controls-help"),
@@ -67,6 +70,9 @@ let lastDryRunSignature = null; // planSignature() of the waypoints+guardrails l
 let plannedPrediction = null; // { arrivalRate, wilson95 } snapshot taken at uplink time, or null if no dry run was done first
 let freeDrive = false; // the player's Free drive toggle (free-drive.js)
 let runIsFreeDrive = false; // whether the CURRENT run is a no-delay free-drive run: never scored or recorded
+let lastHistoric = null; // F1: the Perseverance reveal drawn on the CURRENT end card; null until mission end (present-time rule)
+let lastAlbedoPick = null; // G1: albedo-source.js's pick for the loaded level ({ kind, url, fallbackUrl })
+const historicSnapshots = new Map(); // level.historicTrack file -> parsed snapshot, fetched once per session
 let frameCount = 0; // advances every render frame; boot-probed to prove the loop keeps running during an async dry run
 
 // H1: what the player has actually SEEN of the co-pilot's decisions so far,
@@ -121,6 +127,11 @@ const api = {
     // canvas, which a missing track survives (markers/scale bar/labels
     // already produce enough matching pixels on their own).
     getLastMarsDrift: () => lastMarsDrift,
+    // F1: the historic-track reveal on the current end card (null before
+    // mission end), and G1: which albedo texture the level asked for and
+    // which one actually reached the shader (ortho, or hillshade fallback).
+    getLastHistoric: () => lastHistoric,
+    getAlbedo: () => ({ kind: lastAlbedoPick?.kind ?? null, requestedUrl: lastAlbedoPick?.url ?? null, loadedUrl: scene?.getAlbedoSource?.() ?? null }),
     sampleSlope(x, y) { return terrain?.slopeDeg(x, y) ?? null; },
     getDelaySec: () => signal?.oneWayDelaySec ?? null,
     isFreeDriveRun: () => runIsFreeDrive,
@@ -178,6 +189,9 @@ function handleMissionTransition() {
     ? { ...marsTrackReveal.finalize(marsDriftModel, trueState, terrain), terrain }
     : null;
   lastMarsDrift = marsDrift;
+  // F1: computed HERE, at mission end only, like the drift reveal above.
+  const historic = computeHistoricReveal(marsDrift);
+  lastHistoric = historic;
   if (!runIsFreeDrive) {
     scoreboardData = recordRun(scoreboardData, currentLevelKey, {
       outcome: mission.outcome, timeSec, distanceM: mission.distanceTraveledM, copilotOn,
@@ -195,13 +209,33 @@ function handleMissionTransition() {
     outcome: mission.outcome, timeSec, distanceM: mission.distanceTraveledM,
     whatHappened: runIsFreeDrive ? `${FREE_DRIVE_ENDCARD_NOTE} ${whatHappenedLine(mission)}` : whatHappenedLine(mission),
     onRetry: () => beginRun(activeScenarioKey),
-    objectives, legOutcomes, predicted: plannedPrediction, marsDrift,
+    objectives, legOutcomes, predicted: plannedPrediction, marsDrift, historic,
     share: {
       levelLabel: LEVELS[currentLevelKey].label, outcome: mission.outcome, timeSec,
       delaySec: averageDelaySec(mission) || signal?.oneWayDelaySec || null,
       copilotOn, url: PUBLISHED_URL, freeDrive: runIsFreeDrive,
     },
   });
+}
+
+/** F1: NASA's real rover track vs this run's true route, for a level with a historicTrack (Jezero). Mission end only. */
+function computeHistoricReveal(marsDrift) {
+  const file = LEVELS[currentLevelKey].historicTrack;
+  const snapshot = file ? historicSnapshots.get(file) : null;
+  if (!snapshot || !terrain) return null;
+  const playerPath = marsDrift?.truePath ?? [];
+  return { summary: summarizeHistoric(snapshot, playerPath, terrain), playerPath, terrain };
+}
+
+/** Fetch a level's historic-track snapshot once, in the background; it is only READ at mission end. */
+function prefetchHistoric(level) {
+  const file = level.historicTrack;
+  if (!file || historicSnapshots.has(file)) return;
+  historicSnapshots.set(file, null);
+  fetch(`../assets/${level.assetKey}/${file}`)
+    .then((r) => (r.ok ? r.json() : null))
+    .then((json) => { if (json) historicSnapshots.set(file, json); else historicSnapshots.delete(file); })
+    .catch(() => historicSnapshots.delete(file));
 }
 
 function tickPhysics(dt) {
@@ -379,6 +413,7 @@ function beginRun(scenarioKey) {
   marsDriftModel = null;
   marsTrackReveal = null;
   lastMarsDrift = null;
+  lastHistoric = null;
   runMaxSlopeDeg = 0;
   lastDryRunSummary = null;
   lastDryRunSignature = null;
@@ -481,6 +516,7 @@ function resetRun() {
   marsDriftModel = null;
   marsTrackReveal = null;
   lastMarsDrift = null;
+  lastHistoric = null;
   plannedWaypoints = [];
   pendingDownPulses = [];
 }
@@ -509,19 +545,31 @@ async function loadLevel(key, opts = {}) {
   hud.setStatusLine(""); // bug fix: a switch straight to another level's BRIEF (no run started yet) must not leave the OLD level's "Sent, arrives in..." line up
 
   const nextTerrain = await loadTerrain(level.assetKey);
+  // G1: real LROC orthophoto when its sidecar ships (and the level has not
+  // opted out per the A2 kill criterion), else the DEM hillshade.
+  const albedo = await pickAlbedo(level, nextTerrain, (url) => fetch(url));
   if (!loadGuard.isCurrent(gen)) return; // superseded by a newer level switch meanwhile
+  lastAlbedoPick = albedo;
+  prefetchHistoric(level);
 
   currentLevelKey = key;
   terrain = nextTerrain;
   resetRun(); // M1: end whatever run was active on the previous level/asset
   el.terrainBanner.hidden = !terrain.synthetic;
   el.noDataLegend.hidden = !terrain.hasMask;
+  if (el.landmarkNote) {
+    // A6: a stand-in landmark model says so on screen (levels.js landmarkNote).
+    el.landmarkNote.hidden = !level.landmarkNote;
+    el.landmarkNote.textContent = level.landmarkNote ?? "";
+  }
   el.delayNote.hidden = true;
 
   scene?.dispose?.(); // dispose the OLD scene (GPU memory, textures, listeners) before creating a new one
   scene = createScene(canvas, terrain, {
     exaggeration: 1.0,
-    albedoUrl: terrain.synthetic ? null : `../assets/${level.assetKey}/albedo.jpg`,
+    albedoUrl: albedo.url,
+    albedoFallbackUrl: albedo.fallbackUrl,
+    albedoStrength: albedo.strength,
     planet: level.planet,
     landmarkKind: level.landmarkKind,
   });

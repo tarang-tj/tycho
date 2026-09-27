@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """TYCHO terrain pipeline: download real DEMs, process to the data contract.
 
-Usage: python3 tools/build_terrain.py moon|mars|lunokhod|change4|apollo17|all
+Usage: python3 tools/build_terrain.py moon|mars|lunokhod|change4|apollo17|apollo15|change3|all
 
 For each body: downloads the source GeoTIFF (or PDS3 IMG) to .cache/
 (gitignored, resumable), reads it, crops/resamples with numpy, writes
@@ -9,7 +9,7 @@ assets/<body>/{height.bin,meta.json,albedo.jpg,preview.png}, then deletes
 the raw download. Never keeps more than one raw file on disk at once.
 
 "all" builds moon + mars only (the original two bodies); every later
-addition (lunokhod, change4, apollo17) is built by name
+addition (lunokhod, change4, apollo17, apollo15, change3) is built by name
 (`python3 tools/build_terrain.py <name>`) since each is a later addition
 to the pipeline, not because any of them is any less real.
 
@@ -26,10 +26,10 @@ from __future__ import annotations
 import sys
 
 from outputs import ensure_dir
-from site_pipeline import (ASSETS_DIR, CACHE_DIR, process_apollo17, process_change4, process_lunokhod,
-                            process_mars, process_moon)
+from site_pipeline import (ASSETS_DIR, CACHE_DIR, process_apollo15, process_apollo17, process_change3,
+                            process_change4, process_lunokhod, process_mars, process_moon)
 
-TARGETS = ("moon", "mars", "lunokhod", "change4", "apollo17", "all")
+TARGETS = ("moon", "mars", "lunokhod", "change4", "apollo17", "apollo15", "change3", "all")
 
 
 def main() -> None:
@@ -49,6 +49,10 @@ def main() -> None:
         process_change4()
     if target == "apollo17":
         process_apollo17()
+    if target == "apollo15":
+        process_apollo15()
+    if target == "change3":
+        process_change3()
 
 
 if __name__ == "__main__":

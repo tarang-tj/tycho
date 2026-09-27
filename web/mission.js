@@ -38,6 +38,29 @@ export const BRIEFS = {
     "One-way delay 1.28 s: close enough to steer live.",
     "The astronauts drove the real LRV here with no delay at all, in December 1972. You are driving TYCHO to it remotely from Earth.",
   ],
+  // A9 (plan-wave3.md): every fact below is from LROC post 938 "Spacecraft
+  // Related Coordinates - 2016 Update" (https://lroc.im-ldi.com/images/938:
+  // Apollo 15 LRV 26.13174N 3.63803E, 0.5 m uncertainty) or the DTM product
+  // page (https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_DTM_APOLLO15:
+  // 2 m/px, stereo pairs, mare and a rille among its key features). The
+  // 1.28 s delay line is the game's shared near-side model (A8).
+  apollo15: [
+    "APOLLO 15 - MOON, APOLLO 15 LANDING AREA",
+    "One-way delay 1.28 s: close enough to steer live.",
+    "Drive to the Apollo 15 Lunar Roving Vehicle at 26.13174N 3.63803E, a spot LROC surveyed to within 0.5 m.",
+    "The ground is a 2 m per pixel LROC stereo elevation model, used at full resolution.",
+  ],
+  // A9: lander 44.1214N 340.4883E (9.1 m) and Yutu 44.1208N 340.4878E
+  // (12.9 m) from https://lroc.im-ldi.com/images/938; Mare Imbrium, 5 m/px
+  // from https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_DTM_CHANGE3. The
+  // "about 21 m" is computed from those two coordinates on a 1737.4 km
+  // sphere (18.2 m north-south, 10.9 m east-west), well inside their
+  // combined survey uncertainty, so it is stated as "about".
+  change3: [
+    "CHANG'E 3 - MOON, MARE IMBRIUM",
+    "One-way delay 1.28 s: close enough to steer live.",
+    "Drive to the Chang'e 3 lander at 44.1214N 340.4883E (surveyed to within 9.1 m). Its Yutu rover sits about 21 m away.",
+  ],
 };
 
 /**

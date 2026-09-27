@@ -49,12 +49,21 @@ export const LEVELS = {
     key: "tycho", assetKey: "moon", planet: "moon", mode: "live",
     delay: { type: "direct", oneWaySec: 1.28 },
     label: "Tycho", siteLabel: "Tycho central peak",
+    // A2 kill (plan-wave3.md): the NAC orthophoto stays OFF here. Its own
+    // sidecar records the DTM alignment check as not coherent (16 px raw
+    // offset, NCC -0.007), and in the 1280x800 A/B the photo's baked
+    // shadow deepened the already-shadowed peak face with no visible gain.
+    orthoAlbedo: false,
     briefLines: BRIEFS.tycho,
   },
   mars: {
     key: "mars", assetKey: "mars", planet: "mars", mode: "plan",
     delay: { type: "mars-scenarios" },
     label: "Jezero", siteLabel: "Jezero crater",
+    // F1: NASA rover-reported Perseverance drive segments, revealed on the
+    // end card at mission end only (assets/mars/m20-traverse.json, snapshot
+    // of https://mars.nasa.gov/mmgis-maps/M20/Layers/json/M20_traverse.json).
+    historicTrack: "m20-traverse.json",
     briefLines: BRIEFS.mars,
   },
   change4: {
@@ -73,6 +82,32 @@ export const LEVELS = {
     briefLines: BRIEFS.apollo17,
     arrivalLine: "You reached the Apollo 17 Lunar Roving Vehicle, left here by the astronauts in December 1972.",
   },
+  // Apollo 15 and Chang'e 3 (levelup v4 wave 3): both near-side sites in
+  // direct line of sight, so the same direct 1.28 s one-way delay as the
+  // other near-side levels (plan-wave3.md A8). Goal coordinates and every
+  // fact in their briefs come from LROC post 938
+  // (https://lroc.im-ldi.com/images/938) and each DTM's product page - see
+  // BRIEFS in mission.js.
+  apollo15: {
+    key: "apollo15", assetKey: "apollo15", planet: "moon", mode: "live",
+    delay: { type: "direct", oneWaySec: 1.28 },
+    landmarkKind: "lrv",
+    label: "Apollo 15", siteLabel: "Apollo 15 landing area",
+    briefLines: BRIEFS.apollo15,
+    arrivalLine: "You reached the Apollo 15 Lunar Roving Vehicle, at the parking spot LROC surveyed to within 0.5 m.",
+  },
+  change3: {
+    key: "change3", assetKey: "change3", planet: "moon", mode: "live",
+    delay: { type: "direct", oneWaySec: 1.28 },
+    // A6: the Chang'e-4 lander mesh stands in for Chang'e 3. It is a visual
+    // stand-in only, never a sourced claim, so the level says so on screen
+    // (landmarkNote) and nothing in the copy claims the two look alike.
+    landmarkKind: "change3",
+    landmarkNote: "Lander model approximated: an illustrative stand-in, not a Chang'e 3 survey model.",
+    label: "Chang'e 3", siteLabel: "Mare Imbrium",
+    briefLines: BRIEFS.change3,
+    arrivalLine: "You reached the Chang'e 3 lander. The small box nearby marks where LROC surveyed its Yutu rover.",
+  },
 };
 
 // Level keys in the order they cycle (title screen arrow keys, level cards,
@@ -85,7 +120,9 @@ export const LEVELS = {
 // primary source for Opportunity's precise final position was found -
 // shipping it on synthetic terrain would contradict that premise, so it's
 // cut entirely rather than shipped fake. See README's "Next" note.
-export const LEVEL_ORDER = ["lunokhod", "change4", "apollo17", "tycho", "mars"];
+// Apollo 15 and Chang'e 3 (wave 3) slot in beside their closest siblings:
+// Chang'e 3 after Chang'e-4, Apollo 15 after Apollo 17.
+export const LEVEL_ORDER = ["lunokhod", "change4", "change3", "apollo17", "apollo15", "tycho", "mars"];
 
 /** Resolve a Mars-scenarios-type delay scenario by key, defaulting to "typical" if unknown/omitted. */
 export function resolveScenario(scenarioKey) {
