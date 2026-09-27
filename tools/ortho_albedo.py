@@ -94,6 +94,13 @@ ORTHO_PRODUCTS = {
     "change4": ("CHANGE4", "NAC_DTM_CHANGE4_M1303619844_5M"),
     "lunokhod": ("LUNOKHOD2", "NAC_DTM_LUNOKHOD2_MOSAIC_5M"),
     "moon": ("TYCHOPK01", "NAC_DTM_TYCHOPK01_M1136634925_2M"),
+    # Wave 3 step 2: the two new sites. Both labels fetched and parsed
+    # 2026-09-26 (EQUIRECTANGULAR; label corner lat/lon recomputed from
+    # LINES/LINE_SAMPLES matches the stated bounds); both URLs 302 to
+    # pds.mcp.nasa.gov and return HTTP 200 (APOLLO15 146,268,640 B,
+    # CHANGE3 109,578,840 B). Apollo 15's ortho is PC_REAL float32.
+    "apollo15": ("APOLLO15", "NAC_DTM_APOLLO15_M111571816_2M"),
+    "change3": ("CHANGE3", "NAC_DTM_CHANGE3_M1144922100_5M"),
 }
 
 
@@ -239,7 +246,7 @@ def _fetch_ortho_crop(site: str, rowcol_to_latlon, shade_1024: np.ndarray,
 
     window = fetch_window(url, label, row0, row1, col0, col1, session=session)
     win_row0, win_col0 = max(0, row0), max(0, col0)
-    win_mask = window == label.core_null
+    win_mask = label.nodata_mask(window)
     filled, nodata_frac = fill_nodata(window, win_mask) if win_mask.any() else (window, 0.0)
 
     local_line = line - win_row0

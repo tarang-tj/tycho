@@ -13,6 +13,10 @@ matching every one to within 0.001 deg (<40 m):
   - .../CHANGE4/NAC_DTM_CHANGE4_M1303619844_5M.IMG (LINES=5496, LINE_SAMPLES=2184, LSB_UNSIGNED_INTEGER, CORE_NULL=0)
   - .../LUNOKHOD2/NAC_DTM_LUNOKHOD2_MOSAIC_5M.IMG (LINES=11050, LINE_SAMPLES=4232, LSB_UNSIGNED_INTEGER, CORE_NULL=0)
   - .../TYCHOPK01/NAC_DTM_TYCHOPK01_M1136634925_2M.IMG (LINES=15256, LINE_SAMPLES=3480, LSB_UNSIGNED_INTEGER, CORE_NULL=0)
+Wave-3 step 2 (same checks, 2026-09-26) added the two new sites' orthos:
+  - .../APOLLO15/NAC_DTM_APOLLO15_M111571816_2M.IMG (LINES=14311, LINE_SAMPLES=2555,
+    PC_REAL 32-bit, CORE_NULL=16#FF7FFFFB#, i.e. an ISIS float special pixel)
+  - .../CHANGE3/NAC_DTM_CHANGE3_M1144922100_5M.IMG (LINES=15329, LINE_SAMPLES=3574, LSB_UNSIGNED_INTEGER, CORE_NULL=0)
 
 Projection formula (PDS3 IMAGE_MAP_PROJECTION, spherical Equirectangular,
 1-indexed pixel centers -- verified numerically above, not assumed):
@@ -32,13 +36,23 @@ import numpy as np
 import requests
 
 RANGE_LABEL_BYTES = 8000  # every label seen this session is well under this
-_DTYPE_MAP = {("LSB_INTEGER", 16): "<i2", ("LSB_UNSIGNED_INTEGER", 16): "<u2"}
+_DTYPE_MAP = {("LSB_INTEGER", 16): "<i2", ("LSB_UNSIGNED_INTEGER", 16): "<u2",
+              ("PC_REAL", 32): "<f4"}  # PC_REAL = little-endian IEEE float (Apollo 15 ortho)
+_HEX_RE = re.compile(r"^16#([0-9A-Fa-f]+)#$")  # PDS3 based integer, e.g. CORE_NULL = 16#FF7FFFFB#
+# ISIS float special pixels (NULL, LOW/HIGH REPR/INSTR saturation) are the
+# five bit patterns 16#FF7FFFFB#..16#FF7FFFFF# (listed verbatim in the
+# Apollo 15 ortho label). All decode to values <= this threshold; no real
+# reflectance is anywhere near it.
+_FLOAT_SPECIAL_MAX = float(np.array([0xFF7FFFFB], dtype="<u4").view("<f4")[0])
 _NUMBER_RE = re.compile(r"^(-?\d+\.?\d*(?:[eE][+-]?\d+)?)\s*(?:<[A-Za-z/]+>)?$")
 _KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
 
 def _parse_value(raw: str):
     raw = raw.strip()
+    h = _HEX_RE.match(raw)
+    if h:
+        return int(h.group(1), 16)
     m = _NUMBER_RE.match(raw)
     if m:
         s = m.group(1)
@@ -100,7 +114,12 @@ class OrthoLabel:
         if key not in _DTYPE_MAP:
             raise ValueError(f"unsupported PDS3 SAMPLE_TYPE/SAMPLE_BITS combo: {key}")
         self.dtype = _DTYPE_MAP[key]
-        self.core_null = float(values["CORE_NULL"])
+        if self.dtype == "<f4":
+            # CORE_NULL for a float image is a raw bit pattern (parsed from
+            # 16#...# as an int), not a numeric value.
+            self.core_null = float(np.array([values["CORE_NULL"]], dtype="<u4").view("<f4")[0])
+        else:
+            self.core_null = float(values["CORE_NULL"])
         self.record_bytes = int(values["RECORD_BYTES"])
         self.image_record = int(values["IMAGE"])  # 1-indexed record where pixel data starts
         map_type = values.get("MAP_PROJECTION_TYPE")
@@ -123,6 +142,14 @@ class OrthoLabel:
                               f"LINE_SAMPLES({self.samples})*itemsize({itemsize}); this reader assumes "
                               "no per-record prefix/suffix bytes")
         self.image_byte_offset = (self.image_record - 1) * self.record_bytes
+
+    def nodata_mask(self, arr: np.ndarray) -> np.ndarray:
+        """True where arr holds no data. Integer products: exactly CORE_NULL
+        (unchanged from wave A). Float products: any ISIS special pixel
+        (NULL or a saturation code) or a non-finite value."""
+        if self.dtype == "<f4":
+            return ~np.isfinite(arr) | (arr <= _FLOAT_SPECIAL_MAX)
+        return arr == self.core_null
 
     @classmethod
     def from_text(cls, label_text: str) -> "OrthoLabel":
