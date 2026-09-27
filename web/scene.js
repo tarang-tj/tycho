@@ -1,6 +1,10 @@
 // three.js renderer for TYCHO. Imported only by main.js.
 //
-// API returned by createScene(canvas, terrain, { exaggeration, albedoUrl, planet, landmarkKind }):
+// API returned by createScene(canvas, terrain, { exaggeration, albedoUrl, albedoFallbackUrl, albedoStrength, planet, landmarkKind }):
+//   albedoUrl may be a real LROC NAC orthophoto (assets/<site>/albedo-ortho.jpg,
+//   picked by albedo-source.js); if it fails to load, albedoFallbackUrl (the
+//   DEM hillshade albedo.jpg) is loaded instead. albedoStrength overrides
+//   the planet's default hillshade blend strength for that texture.
 //   available, rendererType, camera, body
 //   updateFromVisibleState(visibleState, trueState?)  last-known telemetry (what the player sees)
 //   updateTrueState(trueState)                        feeds the debug/reveal ghost only
@@ -20,7 +24,7 @@ import { bakeSunMask, buildDemGeometry, buildDemNormalTexture, buildRingGeometry
 import { createNearField } from "./near-field.js";
 import { createSky, makeEnvironment } from "./sky.js";
 import { createRoverModel } from "./rover-model.js";
-import { createLandmark, resolveLandmarkHeadingDeg } from "./landmarks.js";
+import { createLandmark, resolveLandmarkHeadingDeg, resolveSecondaryMarkers } from "./landmarks.js";
 import { createRoverRig } from "./rover-rig.js";
 import { createTracks, createDust } from "./ground-fx.js";
 import { createOverlays } from "./overlays.js";
@@ -51,7 +55,8 @@ function resolveBody(opts) {
 }
 
 export function createScene(canvas, terrain, opts = {}) {
-  const { exaggeration = 1.0, albedoUrl = null } = opts;
+  const { exaggeration = 1.0, albedoUrl = null, albedoFallbackUrl = null, albedoStrength = null } = opts;
+  let albedoLoaded = null; // which URL actually reached the shader (debug/boot probe)
   let renderer;
   try {
     // main.js recreates the scene on the same canvas per level; the reused GL
@@ -157,8 +162,10 @@ export function createScene(canvas, terrain, opts = {}) {
   }), farMat));
   for (const m of far.children) m.frustumCulled = false;
   scene.add(far);
-  if (albedoUrl) {
-    new THREE.TextureLoader().load(albedoUrl, (tex) => {
+  let disposed = false;
+  function loadAlbedo(url, strength, fallbackUrl) {
+    new THREE.TextureLoader().load(url, (tex) => {
+      if (disposed) { tex.dispose(); return; }
       tex.colorSpace = THREE.NoColorSpace;
       tex.anisotropy = 8;
       try {
@@ -173,8 +180,15 @@ export function createScene(canvas, terrain, opts = {}) {
       } catch { /* keep default mean */ }
       U.uDemAlbedo.value = tex;
       U.uHasDemAlbedo.value = 1;
-    }, undefined, () => { /* no albedo asset: detail + lighting carry the look */ });
+      U.uHsStrength.value = strength ?? look.hs;
+      albedoLoaded = url;
+    }, undefined, () => {
+      // Ortho photo missing or broken: fall back to the DEM hillshade at the
+      // planet's default strength. No albedo at all: detail + lighting carry the look.
+      if (fallbackUrl && !disposed) loadAlbedo(fallbackUrl, null, null);
+    });
   }
+  if (albedoUrl) loadAlbedo(albedoUrl, albedoStrength, albedoFallbackUrl);
 
   const near = createNearField({ field, body, uniforms: U, groundColor: look.ground, rockColor: look.rock });
   const spawnPx = terrain.meta?.spawn ?? { x: terrain.width / 2, y: terrain.height / 2 };
@@ -218,6 +232,7 @@ export function createScene(canvas, terrain, opts = {}) {
   // (goalLabel from the asset's own meta.json, never invented here).
   let landmark = null;
   let goalLabelSprite = null;
+  const secondaryMarkers = [];
   if (opts.landmarkKind && goalPx) {
     landmark = createLandmark(opts.landmarkKind);
     const gw = field.pxToWorld(goalPx.x, goalPx.y);
@@ -226,6 +241,17 @@ export function createScene(canvas, terrain, opts = {}) {
     const headingDeg = resolveLandmarkHeadingDeg(terrain.meta);
     landmark.root.rotation.y = (headingDeg * Math.PI) / 180;
     scene.add(landmark.root);
+
+    // Secondary real objects near the goal (e.g. Yutu beside the Chang'e 3
+    // lander), each at a pixel the site's own meta.json names.
+    for (const m of resolveSecondaryMarkers(terrain.meta)) {
+      const marker = m.build();
+      const mw = field.pxToWorld(m.px.x, m.px.y);
+      marker.root.position.set(mw.x, near.groundAt(mw.x, mw.z), mw.z);
+      marker.root.userData.kind = m.kind;
+      scene.add(marker.root);
+      secondaryMarkers.push(marker);
+    }
 
     const labelText = terrain.meta?.goalLabel;
     if (labelText) {
@@ -409,7 +435,9 @@ export function createScene(canvas, terrain, opts = {}) {
       for (const m of list) { m.map?.dispose?.(); m.normalMap?.dispose?.(); m.dispose(); }
     });
     for (const t of [detailA, detailB, detailC, fillTex, realMaskTex, demNormalTex, sprite, U.uDemAlbedo.value]) t?.dispose?.();
+    disposed = true;
     landmark?.dispose?.();
+    for (const m of secondaryMarkers) m.dispose();
     goalLabelSprite?.material?.map?.dispose?.();
     goalLabelSprite?.material?.dispose?.();
     sunMask.dispose();
@@ -448,7 +476,8 @@ export function createScene(canvas, terrain, opts = {}) {
     pulseSignal: (dir, durationSec) => overlays.pulse(dir, durationSec),
     skipIntro: () => camRig.skipIntro(),
     setCameraView,
-    debugInternals: () => ({ scene, far, near, model, sun, renderer, tracks, dust, overlays, sky, uniforms: U, camRig, field }),
+    debugInternals: () => ({ scene, far, near, model, sun, renderer, tracks, dust, overlays, sky, uniforms: U, camRig, field, landmark, secondaryMarkers, goalLabelSprite }),
+    getAlbedoSource: () => albedoLoaded,
     getStats: () => ({ pixelRatio: pr, body, filledFraction: field.filledFraction, triangles: renderer.info.render.triangles, calls: renderer.info.render.calls }),
   };
   window.TYCHO_SCENE = api;

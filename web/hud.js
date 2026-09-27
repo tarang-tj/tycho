@@ -14,6 +14,7 @@ import { copyResultText } from "./hud-clipboard.js";
 import { formatShareResult, formatLegGrid } from "./share-result.js";
 import { formatPredictedLine, driftLabel } from "./mars-run.js";
 import { drawTracks } from "./hud-tracks.js";
+import { drawHistoric, HISTORIC_COLOR } from "./hud-historic.js";
 
 /** Create the mission panel DOM inside `hostEl` (the existing .hud side panel). Returns a handle with render functions. */
 export function createHud(hostEl) {
@@ -106,7 +107,7 @@ export function createHud(hostEl) {
     statusLine.textContent = text ?? "";
   }
 
-  function showEndCard({ outcome, timeSec, distanceM, whatHappened, onRetry, share, objectives, legOutcomes, predicted, marsDrift }) {
+  function showEndCard({ outcome, timeSec, distanceM, whatHappened, onRetry, share, objectives, legOutcomes, predicted, marsDrift, historic }) {
     plan.hidden = true;
     endcard.hidden = false;
     endcard.innerHTML = "";
@@ -182,6 +183,11 @@ export function createHud(hostEl) {
       tracksCanvas.scrollIntoView?.({ block: "center" });
     }
 
+    // F1: NASA's real Perseverance drive segments vs the player's route.
+    // Only ever passed at mission end on a level with a historicTrack
+    // (main.js's handleMissionTransition), never while driving.
+    if (historic) renderHistoric(endcard, historic);
+
     const actions = document.createElement("div");
     actions.className = "mission-endcard-actions";
     endcard.appendChild(actions);
@@ -248,6 +254,31 @@ export function createHud(hostEl) {
   }
 
   return { showBrief, hideBrief, showPlanning, hidePlanning, setStatusLine, showEndCard, hideEndCard, updateScoreboard };
+}
+
+function renderHistoric(endcard, { summary, playerPath, terrain }) {
+  const wrap = document.createElement("div");
+  wrap.className = "mission-endcard-historic";
+  const title = document.createElement("p");
+  title.className = "mission-endcard-line mission-historic-match";
+  title.textContent = summary.matchLine;
+  wrap.appendChild(title);
+  const canvas = document.createElement("canvas");
+  canvas.className = "mission-historic-map";
+  const dpr = window.devicePixelRatio || 1;
+  const CSS_SIZE = 220;
+  canvas.width = Math.round(CSS_SIZE * dpr);
+  canvas.height = Math.round(CSS_SIZE * dpr);
+  wrap.appendChild(canvas);
+  drawHistoric(canvas, terrain, summary, playerPath, dpr);
+  const legend = document.createElement("p");
+  legend.className = "mission-endcard-line mission-tracks-legend mission-historic-legend";
+  const swatch = document.createElement("span");
+  swatch.style.color = HISTORIC_COLOR;
+  swatch.textContent = "Orange: ";
+  legend.append(swatch, `${summary.sourceLabel} (Perseverance; NASA/JPL-Caltech). White: your route this run.`);
+  wrap.appendChild(legend);
+  endcard.appendChild(wrap);
 }
 
 function outcomeLabel(outcome) {

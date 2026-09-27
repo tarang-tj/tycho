@@ -344,6 +344,7 @@ try {
     await driftPage.clock.install();
     const TERMINAL = ["won", "tipped", "stalled", "held"];
     const presentTimeSamples = [];
+    const preEndHistoricSamples = [];
     let driveStarted = false;
     let terminalStatus = null;
     // The 509m real drive to (494,494) takes a few minutes of simulated time
@@ -373,10 +374,14 @@ try {
           bodyText: document.body.innerText,
           driftVisible: !endcardHidden && !!document.querySelector(".mission-endcard-drift"),
           tracksVisible: !endcardHidden && !!document.querySelector(".mission-endcard-tracks"),
+          // F1: the Perseverance track must not exist anywhere before mission end.
+          historicInDom: !!document.querySelector(".mission-endcard-historic, .mission-historic-map"),
+          historicState: window.TYCHO.debug.getLastHistoric() !== null,
         };
       });
       if (!driveStarted && sample.hasAutopilot && hasMoved(driftSpawn, sample.trueState)) driveStarted = true;
       if (TERMINAL.includes(sample.status)) { terminalStatus = sample.status; break; }
+      preEndHistoricSamples.push({ status: sample.status, historicInDom: sample.historicInDom, historicState: sample.historicState });
       if (driveStarted) presentTimeSamples.push(sample);
     }
     assert.ok(driveStarted, "drift-reveal probe: the plan was delivered but the rover never actually moved from spawn - not a real drive");
@@ -389,6 +394,11 @@ try {
       assert.equal(sample.driftVisible, false, `the drift line leaked present time: visible WHILE the rover was still driving (status=${sample.status})`);
       assert.equal(sample.tracksVisible, false, `the believed/true tracks leaked present time: visible WHILE the rover was still driving (status=${sample.status})`);
     }
+    for (const sample of preEndHistoricSamples) {
+      assert.equal(sample.historicInDom, false, `F1: the Perseverance track was in the DOM before mission end (status=${sample.status})`);
+      assert.equal(sample.historicState, false, `F1: the Perseverance reveal was computed before mission end (status=${sample.status})`);
+    }
+    console.log(`Mars F1: Perseverance track absent across ${preEndHistoricSamples.length} pre-end samples (before and during the drive).`);
     console.log(`Mars: drift reveal correctly absent across ${presentTimeSamples.length} samples of a real drive (spawn -> waypoint(494,494)), reached terminal status "${terminalStatus}".`);
 
     // Generous timeout (not 5s like the rest of this file): the hundred-plus
@@ -463,6 +473,51 @@ try {
     assert.ok(trackSample.pathLengths[0] >= 3 && trackSample.pathLengths[1] >= 3, `too few sampled points to trust a midpoint-away-from-endpoints check: ${trackSample.pathLengths}`);
     assert.ok(trackSample.trueMatch, "true track (white) is not actually rendered at its own midpoint - the drawPath call for it may be missing");
     assert.ok(trackSample.believedMatch, "believed track (magenta) is not actually rendered at its own midpoint - the drawPath call for it may be missing");
+    // F1 at mission end: the real Perseverance drive segments, labeled with
+    // the real sol range, and the match line, all visible; the orange track
+    // must actually be drawn at a real track point (not just a legend).
+    await driftPage.waitForSelector(".mission-endcard-historic", { state: "visible", timeout: 20000 });
+    const historic = await driftPage.evaluate(async () => {
+      const { computeHistoricFit } = await import("/web/hud-historic.js");
+      const h = window.TYCHO.debug.getLastHistoric();
+      const canvas = document.querySelector(".mission-historic-map");
+      if (!h || !canvas) return null;
+      const off = document.createElement("canvas");
+      off.width = canvas.width; off.height = canvas.height;
+      const ctx = off.getContext("2d");
+      ctx.drawImage(canvas, 0, 0);
+      const { data } = ctx.getImageData(0, 0, off.width, off.height);
+      const fit = computeHistoricFit(h.playerPath, h.summary.trackPoints);
+      // A track point far from the player's route, so the white route cannot cover it.
+      let probe = null, best = -1;
+      for (const p of h.summary.trackPoints) {
+        let near = Infinity;
+        for (const q of h.playerPath) near = Math.min(near, Math.hypot(p.x - q.x, p.y - q.y));
+        if (!h.playerPath.length) near = Math.hypot(p.x - 512, p.y - 512);
+        if (near > best) { best = near; probe = p; }
+        if (best > 60) break;
+      }
+      const cx = ((probe.x - fit.viewMinX) / fit.extentPx) * off.width;
+      const cy = ((probe.y - fit.viewMinY) / fit.extentPx) * off.height;
+      let orange = 0;
+      const r = Math.ceil(4 * (window.devicePixelRatio || 1));
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+        const x = Math.round(cx) + dx, y = Math.round(cy) + dy;
+        if (x < 0 || y < 0 || x >= off.width || y >= off.height) continue;
+        const i = (y * off.width + x) * 4;
+        if (Math.abs(data[i] - 255) <= 2 && Math.abs(data[i + 1] - 157) <= 2 && Math.abs(data[i + 2] - 60) <= 2) orange++;
+      }
+      return {
+        legend: document.querySelector(".mission-historic-legend")?.textContent ?? "",
+        match: document.querySelector(".mission-historic-match")?.textContent ?? "",
+        solMin: h.summary.solMin, solMax: h.summary.solMax, matchPct: h.summary.matchPct, orange,
+      };
+    });
+    assert.ok(historic, "F1: the historic reveal state or its canvas is missing at mission end");
+    assert.ok(historic.legend.includes(`NASA rover-reported drive segments, sols ${historic.solMin}-${historic.solMax}`), `F1 legend missing the real sol range: "${historic.legend}"`);
+    assert.match(historic.match, /^(\d+% of your route within 100 m of Perseverance's\.|TYCHO did not move this run)/, `F1 match line malformed: "${historic.match}"`);
+    assert.ok(historic.orange > 0, "F1: no orange Perseverance track pixels at a real track point - the segments are not drawn");
+    console.log(`Mars F1: at mission end - "${historic.match}" | sols ${historic.solMin}-${historic.solMax} | ${historic.orange} track px at a probe point.`);
     console.log(`Mars: drift reveal shown at mission end - "${driftText}" (both tracks confirmed rendered at their own midpoints, ${trackSample.pathLengths[0]} true / ${trackSample.pathLengths[1]} believed sampled points).`);
 
     // Review finding 2 (W2-X3): a SE-bound drive used to hide its endpoints,
@@ -557,7 +612,9 @@ try {
       // made a failing run die of memory instead of failing this assertion.
       marsTrackReveal: window.TYCHO.debug.getMarsTrackReveal() === null ? null : "not reset",
       lastMarsDrift: window.TYCHO.debug.getLastMarsDrift() === null ? null : "not reset",
+      lastHistoric: window.TYCHO.debug.getLastHistoric() === null ? null : "not reset",
     }));
+    assert.equal(afterRetry.lastHistoric, null, "F1: the previous run's Perseverance reveal was not reset on retry");
     assert.equal(afterRetry.endcardHidden, true, "the previous run's drift reveal remained visible after retrying (present-time leak into the next run)");
     assert.equal(afterRetry.lastMarsDrift, null, "the previous run's finalized tracks (getLastMarsDrift) were not reset on retry");
     // Review finding 4: marsTrackReveal itself must be reset on every fresh
@@ -845,6 +902,116 @@ try {
   }
 
   // ---------------------------------------------------------------------
+  // G1 (ortho albedo) and goal landmarks, on every level in LEVEL_ORDER.
+  // Albedo: a level whose assets ship albedo-ortho.json (and has not opted
+  // out, levels.js orthoAlbedo:false) must load the photo; any other level
+  // the hillshade. Then both fallbacks are forced: a 404 sidecar, and a
+  // present sidecar whose photo 404s, must each land on albedo.jpg.
+  // Landmarks: each level with a landmarkKind must actually RENDER it: the
+  // goal model (and any meta-placed secondary marker, e.g. Yutu) is drawn
+  // from a nearby camera with it shown and hidden, and the two frames must
+  // differ. Chang'e 3 must also show its "model approximated" note (A6).
+  // ---------------------------------------------------------------------
+  const levelPage = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  try {
+    levelPage.on("pageerror", (error) => errors.push(error.message));
+    await levelPage.goto(`http://127.0.0.1:${port}/web/`, { waitUntil: "networkidle" });
+    await levelPage.waitForFunction(() => window.TYCHO?.ready === true, null, { timeout: 10000 });
+    const loadAndWaitAlbedo = async (pg, key) => {
+      await pg.evaluate((k) => window.TYCHO.switchLevel(k), key);
+      await pg.waitForFunction((k) => window.TYCHO.getLevel() === k, key, { timeout: 10000 });
+      await pg.waitForFunction(() => !!window.TYCHO.debug.getAlbedo().loadedUrl, null, { timeout: 15000 });
+      return pg.evaluate(() => window.TYCHO.debug.getAlbedo());
+    };
+    for (const key of LEVEL_ORDER) {
+      const level = LEVELS[key];
+      const albedo = await loadAndWaitAlbedo(levelPage, key);
+      const sidecar = existsSync(`${assetsRoot}${level.assetKey}/albedo-ortho.json`);
+      const expected = sidecar && level.orthoAlbedo !== false ? "ortho" : "hillshade";
+      assert.equal(albedo.kind, expected, `${level.label}: expected the ${expected} albedo, picked ${albedo.kind}`);
+      const expectedFile = expected === "ortho" ? "albedo-ortho.jpg" : "albedo.jpg";
+      assert.ok(albedo.loadedUrl.endsWith(`/${level.assetKey}/${expectedFile}`), `${level.label}: shader got ${albedo.loadedUrl}, expected ${expectedFile}`);
+      const paint = await levelPage.evaluate(sampleCanvasPainted);
+      assert.ok(paint.fraction > 0.02, `${level.label}: scene appears blank with the ${albedo.kind} albedo`);
+
+      if (level.landmarkKind) {
+        const rendered = await levelPage.evaluate(() => {
+          const s = window.TYCHO_SCENE;
+          const I = s.debugInternals();
+          if (!I.landmark) return null;
+          const gl = I.renderer.getContext();
+          const shot = (cam) => {
+            I.renderer.render(I.scene, cam);
+            const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
+            const buf = new Uint8Array(w * h * 4);
+            gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+            return buf;
+          };
+          const out = [];
+          for (const [kind, obj] of [["goal", I.landmark.root], ...I.secondaryMarkers.map((m) => [m.root.userData.kind, m.root])]) {
+            const p = obj.position;
+            const cam = s.camera.clone();
+            cam.position.set(p.x + 5, Math.max(p.y + 2.5, I.near.groundAt(p.x + 5, p.z + 5) + 2), p.z + 5);
+            cam.lookAt(p.x, p.y + 0.6, p.z);
+            cam.updateMatrixWorld();
+            const on = shot(cam);
+            obj.visible = false;
+            const off = shot(cam);
+            obj.visible = true;
+            let diff = 0;
+            for (let i = 0; i < on.length; i += 4) {
+              if (Math.abs(on[i] - off[i]) + Math.abs(on[i + 1] - off[i + 1]) + Math.abs(on[i + 2] - off[i + 2]) > 30) diff++;
+            }
+            out.push({ kind, diffFraction: diff / (on.length / 4) });
+          }
+          return out;
+        });
+        assert.ok(rendered, `${level.label}: landmarkKind "${level.landmarkKind}" but no landmark was built`);
+        for (const r of rendered) {
+          assert.ok(r.diffFraction > 0.003, `${level.label}: the ${r.kind} landmark does not visibly render (${(r.diffFraction * 100).toFixed(2)}% pixels differ)`);
+        }
+        const hasYutu = rendered.some((r) => r.kind === "yutu");
+        if (key === "change3") assert.ok(hasYutu, "Chang'e 3: the Yutu marker from meta.json's yutuPixel1024 was not placed");
+        console.log(`${level.label}: albedo ${albedo.kind}; landmarks render - ${rendered.map((r) => `${r.kind} ${(r.diffFraction * 100).toFixed(1)}% px`).join(", ")}.`);
+      } else {
+        console.log(`${level.label}: albedo ${albedo.kind}.`);
+      }
+      const note = await levelPage.evaluate(() => { const n = document.getElementById("landmarkNote"); return { hidden: n.hidden, text: n.textContent }; });
+      if (level.landmarkNote) {
+        assert.equal(note.hidden, false, `${level.label}: its landmarkNote is not shown`);
+        assert.match(note.text, /model approximated/i);
+      } else {
+        assert.equal(note.hidden, true, `${level.label}: a landmark note leaked from another level: "${note.text}"`);
+      }
+    }
+  } finally {
+    await levelPage.close();
+  }
+
+  const orthoLevel = LEVEL_ORDER.find((k) => existsSync(`${assetsRoot}${LEVELS[k].assetKey}/albedo-ortho.json`) && LEVELS[k].orthoAlbedo !== false);
+  if (orthoLevel) {
+    for (const [what, pattern] of [["missing sidecar", "**/albedo-ortho.json"], ["broken photo", "**/albedo-ortho.jpg"]]) {
+      const fbPage = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+      try {
+        await fbPage.route(pattern, (route) => route.fulfill({ status: 404, body: "" }));
+        await fbPage.goto(`http://127.0.0.1:${port}/web/`, { waitUntil: "networkidle" });
+        await fbPage.waitForFunction(() => window.TYCHO?.ready === true, null, { timeout: 10000 });
+        const key = orthoLevel === "lunokhod" ? LEVEL_ORDER.find((k) => k !== "lunokhod" && LEVELS[k].planet === "moon" && existsSync(`${assetsRoot}${LEVELS[k].assetKey}/albedo-ortho.json`)) : orthoLevel;
+        await fbPage.evaluate((k) => window.TYCHO.switchLevel(k), key);
+        await fbPage.waitForFunction((k) => window.TYCHO.getLevel() === k, key, { timeout: 10000 });
+        await fbPage.waitForFunction(() => !!window.TYCHO.debug.getAlbedo().loadedUrl, null, { timeout: 15000 });
+        const got = await fbPage.evaluate(() => window.TYCHO.debug.getAlbedo());
+        assert.ok(got.loadedUrl.endsWith(`/${LEVELS[key].assetKey}/albedo.jpg`), `G1 fallback (${what}) on ${key}: expected albedo.jpg in the shader, got ${got.loadedUrl}`);
+        console.log(`G1 fallback (${what}) on ${LEVELS[key].label}: shader fell back to ${got.loadedUrl.split("/").slice(-2).join("/")}.`);
+      } finally {
+        await fbPage.close();
+      }
+    }
+  } else {
+    console.log("G1 fallback probes skipped: no level ships an ortho sidecar.");
+  }
+
+  // ---------------------------------------------------------------------
   // H2 regression guard: at phone width (390x844) every level button in
   // the top bar must be fully inside the viewport (or reachable by
   // scrolling its container) and clickable - not clipped off-screen by
@@ -867,7 +1034,7 @@ try {
         // is unreachable even if scrolling exists; a button outside the
         // container's current scroll window but reachable by scrolling
         // (overflow-x:auto) is fine.
-        const withinContainerScrollRange = box.right <= container.scrollWidth + containerBox.left + 1
+        const withinContainerScrollRange = box.right <= containerBox.left + container.clientLeft + container.scrollWidth + 1 // clientLeft: scrollWidth excludes the 1px border
           && box.left >= containerBox.left - 1;
         return { level: btn.dataset.level, insideViewport, withinContainerScrollRange, box };
       });

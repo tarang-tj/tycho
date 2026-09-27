@@ -6,12 +6,38 @@
 import { createParkedLunokhod } from "./lunokhod-parked.js";
 import { createChange4Lander } from "./change4-lander.js";
 import { createApolloLrv } from "./apollo-lrv.js";
+import { createYutuMarker } from "./yutu-marker.js";
 
 const BUILDERS = {
   lunokhod2: createParkedLunokhod,
   change4: createChange4Lander,
+  // Chang'e 3 reuses the Chang'e-4 lander mesh as a visual stand-in only
+  // (plan-wave3.md A6); levels.js's landmarkNote puts "model approximated"
+  // on screen for it.
+  change3: createChange4Lander,
   lrv: createApolloLrv,
 };
+
+// Secondary real objects near a goal, each placed from a pixel the data
+// pipeline wrote into meta.json (never computed or invented here). Today
+// that is only Yutu, from assets/change3/meta.json's yutuPixel1024 (its
+// LROC post 938 coordinate projected by tools/sites/change3.py).
+const SECONDARY = [
+  { metaKey: "yutuPixel1024", kind: "yutu", build: createYutuMarker },
+];
+
+/**
+ * Secondary markers the loaded meta.json places: [{ kind, px: {x, y}, build }].
+ * Empty when meta names none.
+ */
+export function resolveSecondaryMarkers(meta) {
+  const out = [];
+  for (const s of SECONDARY) {
+    const px = meta?.[s.metaKey];
+    if (px && Number.isFinite(px.x) && Number.isFinite(px.y)) out.push({ kind: s.kind, px, build: s.build });
+  }
+  return out;
+}
 
 /** Build the landmark model for `kind`, or null if `kind` is unknown/omitted. */
 export function createLandmark(kind) {

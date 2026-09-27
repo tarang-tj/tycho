@@ -143,6 +143,8 @@ const BOT_RUNNERS = {
   lunokhod: runPursuitBot,
   change4: runPursuitBot,
   apollo17: runPursuitBot,
+  apollo15: runPursuitBot,
+  change3: runPursuitBot,
   tycho: runWaypointIndexBot,
 };
 
