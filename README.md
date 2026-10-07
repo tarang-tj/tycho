@@ -2,7 +2,7 @@
 
 **TYCHO is a rover teleoperation simulator built on real NASA and USGS elevation data from the Moon and Mars. It models the real signal delay and a co-pilot with labeled uncertainty, and lets you drive it in a browser game.**
 
-[![gate](https://github.com/tarang-tj/tycho/actions/workflows/gate.yml/badge.svg)](https://github.com/tarang-tj/tycho/actions/workflows/gate.yml)
+[![tests](https://github.com/tarang-tj/tycho/actions/workflows/gate.yml/badge.svg)](https://github.com/tarang-tj/tycho/actions/workflows/gate.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-2f3440)](LICENSE)
 [![Zero build](https://img.shields.io/badge/build-none-2f3440)](#run-it-locally)
 [![three.js](https://img.shields.io/badge/three.js-0.169-2f3440)](https://threejs.org/)
