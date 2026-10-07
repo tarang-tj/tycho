@@ -2,6 +2,7 @@
 
 **TYCHO is a rover teleoperation simulator built on real NASA and USGS elevation data from the Moon and Mars. It models the real signal delay and a co-pilot with labeled uncertainty, and lets you drive it in a browser game.**
 
+[![gate](https://github.com/tarang-tj/tycho/actions/workflows/gate.yml/badge.svg)](https://github.com/tarang-tj/tycho/actions/workflows/gate.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-2f3440)](LICENSE)
 [![Zero build](https://img.shields.io/badge/build-none-2f3440)](#run-it-locally)
 [![three.js](https://img.shields.io/badge/three.js-0.169-2f3440)](https://threejs.org/)
@@ -260,7 +261,7 @@ TYCHO itself is much faster than Perseverance (up to 3 m/s). That's a game choic
 
 - **Lunokhod site terrain:** LROC NAC DTM `NAC_DTM_LUNOKHOD2`, credit **NASA/GSFC/Arizona State University**. "LROC Reduced Data Record (RDR) products available through the NASA Planetary Data System (PDS) are in the public domain." [Product page](https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_DTM_LUNOKHOD2).
 - **Tycho terrain:** LROC NAC DTM `NAC_DTM_TYCHOPK01`, credit **NASA/GSFC/Arizona State University**. Same PDS public-domain terms. [Product page](https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_DTM_TYCHOPK01).
-- **Mars terrain:** USGS CTX DEM `M20_JezeroCrater_CTXDEM_20m`, credit **NASA/JPL-Caltech/MSSS/USGS** (USGS Astrogeology). Under NASA's data policy, "data from a NASA-led mission is licensed as Creative Commons Zero (CC0); public domain, no usage restrictions." [Source directory](https://planetarymaps.usgs.gov/mosaic/mars2020_trn/CTX/ScienceInvestigationMaps_JPL/).
+- **Mars terrain:** USGS CTX DEM `M20_JezeroCrater_CTXDEM_20m`, credit **NASA/JPL-Caltech/MSSS/USGS** (USGS Astrogeology). Under NASA's data policy, "data from a NASA-led mission is licensed as Creative Commons Zero (CC0); public domain, no usage restrictions." [Source index](https://planetarymaps.usgs.gov/mosaic/mars2020_trn/CTX/index.html).
 - **Chang'e-4 terrain:** LROC NAC DTM `NAC_DTM_CHANGE4`, credit **NASA/GSFC/Arizona State University**. Same PDS public-domain terms. [Product page](https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_DTM_CHANGE4). Position: [LROC post 1087](https://lroc.im-ldi.com/posts/1087); landing date and LRO-frame elevation: [Liu, B. et al. 2019, Nature Communications 10:4229](https://pmc.ncbi.nlm.nih.gov/articles/PMC6760200/).
 - **Apollo 17 terrain:** LROC NAC DTM `NAC_DTM_APOLLO17`, credit **NASA/GSFC/Arizona State University**. Same PDS public-domain terms. [Product page](https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_DTM_APOLLO17). LRV coordinates: [LROC, Spacecraft Related Coordinates - 2016 Update](https://lroc.im-ldi.com/images/938).
 - **Apollo 15 terrain:** LROC NAC DTM `NAC_DTM_APOLLO15`, credit **NASA/GSFC/Arizona State University**. Same PDS public-domain terms. [Product page](https://data.lroc.im-ldi.com/lroc/view_rdr/NAC_DTM_APOLLO15). LRV coordinates: [LROC post 938](https://lroc.im-ldi.com/images/938).
