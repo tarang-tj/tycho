@@ -14,6 +14,9 @@
 
 No install, no account. Built for desktop and phone browsers with WebGL.
 
+![Twenty seconds on the Tycho level, recorded from the live site: the rover climbs the central peak, the stop order is still in flight when the slope passes the limit, and it tips](docs/drive-tycho-peak.webp)
+<sub>Twenty seconds on the live site, Tycho level. Every key press lands 1.28 s later; here the order to stop was still in flight when the slope passed 32 degrees.</sub>
+
 ---
 
 ## Why this exists
