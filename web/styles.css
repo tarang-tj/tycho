@@ -194,7 +194,7 @@ body.title-open .hud { transform: translateY(10px); }
   .terrain-banner { top: 3.4rem; left: 50%; }
   .landmark-note { top: 5.6rem; }
   .delay-note { bottom: 0.6rem; left: 50%; }
-  .title-screen { align-items: safe flex-end; background: linear-gradient(0deg, rgba(4, 5, 8, 0.96) 0%, rgba(4, 5, 8, 0.88) 55%, rgba(4, 5, 8, 0.1) 85%); }
+  .title-screen { align-items: safe flex-end; background: linear-gradient(0deg, rgba(4, 5, 8, 0.96) 0%, rgba(4, 5, 8, 0.88) 55%, rgba(4, 5, 8, 0.62) 85%, rgba(4, 5, 8, 0.5) 100%); /* the wordmark sits in the top 15% on a phone: keep the rover behind it dim */ }
   .title-inner { padding: 1.2rem 1rem calc(1.4rem + env(safe-area-inset-bottom)); } /* 7 level cards fill the phone; no spacer above the eyebrow */
   .title-eyebrow { font-size: 0.82rem; letter-spacing: 0.14em; margin-bottom: 0.6rem; }
   .title-story { font-size: 0.86rem; margin: 0.7rem 0 1.1rem; }
